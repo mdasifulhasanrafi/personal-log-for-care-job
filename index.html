@@ -6,7 +6,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1b3a5c">
-<title>Rafi Care Log</title>
+<title id="pageTitle">Care Log</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.18.0/lib/msal-browser.min.js"></script>
 <script>
@@ -198,15 +198,62 @@
   .hist-row .ht{color:var(--ink-soft); flex-shrink:0; width:78px;}
   .hist-row .ha{font-weight:600;}
   .hist-row .hd{color:var(--ink-soft);}
+
+  /* Auth gate */
+  #authGate{
+    position:fixed; inset:0; z-index:100; background:var(--navy);
+    display:flex; align-items:center; justify-content:center; padding:24px;
+  }
+  #authGate.hidden{display:none;}
+  .auth-box{
+    background:#fff; border-radius:18px; padding:28px 24px; width:100%; max-width:360px;
+    box-shadow:0 12px 32px rgba(0,0,0,.25);
+  }
+  .auth-box h2{margin:0 0 4px; font-size:20px; color:var(--navy);}
+  .auth-box .auth-sub{font-size:13px; color:var(--ink-soft); margin-bottom:20px;}
+  .auth-box .field{margin-bottom:12px;}
+  .auth-box .field label{display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:5px;}
+  .auth-box .field input{
+    width:100%; padding:12px 13px; border-radius:10px; border:1px solid var(--line);
+    font-size:16px; background:#fbfaf8; color:var(--ink);
+  }
+  .auth-box .remember{display:flex; align-items:center; gap:8px; font-size:13px; margin:4px 0 16px; color:var(--ink-soft);}
+  .auth-box .remember input{width:auto;}
+  .auth-error{color:var(--danger); font-size:12.5px; margin:-6px 0 12px; min-height:16px;}
+  .auth-switch{text-align:center; font-size:12.5px; color:var(--ink-soft); margin-top:14px;}
+  .auth-switch a{color:var(--clay); font-weight:600; text-decoration:none;}
 </style>
 </head>
 <body>
 
+<div id="authGate">
+  <div class="auth-box">
+    <div id="authCreateForm">
+      <h2>Create your account</h2>
+      <div class="auth-sub">This is your first time opening this app on this device — set a username and password to protect your data.</div>
+      <div class="field"><label>Username</label><input id="authNewUser" autocomplete="username"></div>
+      <div class="field"><label>Password</label><input id="authNewPass" type="password" autocomplete="new-password"></div>
+      <div class="field"><label>Confirm password</label><input id="authNewPass2" type="password" autocomplete="new-password"></div>
+      <div class="auth-error" id="authCreateError"></div>
+      <button class="btn" onclick="createAccount()">Create account</button>
+    </div>
+    <div id="authLoginForm" style="display:none;">
+      <h2>Welcome back</h2>
+      <div class="auth-sub" id="authLoginSub">Log in to continue</div>
+      <div class="field"><label>Password</label><input id="authLoginPass" type="password" autocomplete="current-password"></div>
+      <label class="remember"><input type="checkbox" id="authRemember" checked> Keep me logged in on this device</label>
+      <div class="auth-error" id="authLoginError"></div>
+      <button class="btn" onclick="loginAccount()">Log in</button>
+      <div class="auth-switch"><a onclick="showResetConfirm()">Forgot password? Reset this device</a></div>
+    </div>
+  </div>
+</div>
+
 <header class="top">
   <div class="row1">
     <div>
-      <h1>Rafi Care Log</h1>
-      <div class="sub" id="headerSub">Md Asiful Hasan Rafi · Nubah Social Care</div>
+      <h1 id="headerTitle">Care Log</h1>
+      <div class="sub" id="headerSub">Tap Settings to set your name &amp; company</div>
     </div>
     <div class="rate-pill" id="ratePill">£13.10/hr</div>
   </div>
@@ -249,6 +296,44 @@
 
   <!-- SETTINGS VIEW -->
   <section class="view" id="view-settings">
+    <div class="card">
+      <h2>Account</h2>
+      <div style="font-size:13px; margin-bottom:10px;">Logged in as <b id="acctUsername"></b></div>
+
+      <div id="changePassBox" style="display:none; margin-top:6px;">
+        <div class="field"><label>Current password</label><input type="password" id="cpOld" autocomplete="current-password"></div>
+        <div class="field"><label>New password</label><input type="password" id="cpNew" autocomplete="new-password"></div>
+        <div class="field"><label>Confirm new password</label><input type="password" id="cpNew2" autocomplete="new-password"></div>
+        <div class="auth-error" id="cpError"></div>
+        <button class="btn" onclick="changePassword()">Save new password</button>
+        <button class="btn secondary" style="margin-top:8px;" onclick="toggleChangePass(false)">Cancel</button>
+      </div>
+
+      <div id="acctButtons">
+        <button class="btn secondary" onclick="toggleChangePass(true)">Change password</button>
+        <button class="btn secondary" style="margin-top:8px;" onclick="logoutAccount()">Log out</button>
+        <button class="btn danger" style="margin-top:8px;" onclick="showResetConfirm()">Reset account &amp; wipe data</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Profile</h2>
+      <div class="field">
+        <label>App name (shown in header &amp; browser tab)</label>
+        <input id="profAppName" placeholder="Care Log">
+      </div>
+      <div class="field">
+        <label>Your name</label>
+        <input id="profName" placeholder="e.g. J. Smith">
+      </div>
+      <div class="field">
+        <label>Company / employer</label>
+        <input id="profCompany" placeholder="e.g. Acme Care Ltd">
+      </div>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:8px; line-height:1.5;">
+        This stays on your device only — it's never written into the app's public source code.
+      </div>
+      <button class="btn" onclick="saveProfile()">Save profile</button>
+    </div>
     <div class="card">
       <h2>☁️ OneDrive live sync</h2>
       <div id="syncSetupBox">
@@ -371,6 +456,122 @@
 </div>
 
 <script>
+/* ---------------- Auth ---------------- */
+const ACCOUNT_KEY = "careLogAccount_v1";
+const SESSION_KEY = "careLogSession_v1"; // persistent (remember me)
+const SESSION_TEMP_KEY = "careLogSessionTemp_v1"; // per-tab only (sessionStorage)
+
+async function sha256Hex(text){
+  const enc = new TextEncoder().encode(text);
+  const buf = await crypto.subtle.digest("SHA-256", enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+function randomSalt(){
+  const arr = new Uint8Array(16);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+function getAccount(){
+  try{ return JSON.parse(localStorage.getItem(ACCOUNT_KEY)); }catch(e){ return null; }
+}
+function hasActiveSession(){
+  return !!(localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_TEMP_KEY));
+}
+async function createAccount(){
+  const user = document.getElementById("authNewUser").value.trim();
+  const pass = document.getElementById("authNewPass").value;
+  const pass2 = document.getElementById("authNewPass2").value;
+  const err = document.getElementById("authCreateError");
+  err.textContent = "";
+  if(!user){ err.textContent = "Please enter a username."; return; }
+  if(pass.length < 4){ err.textContent = "Password must be at least 4 characters."; return; }
+  if(pass !== pass2){ err.textContent = "Passwords don't match."; return; }
+  const salt = randomSalt();
+  const hash = await sha256Hex(salt + pass);
+  localStorage.setItem(ACCOUNT_KEY, JSON.stringify({username:user, salt, hash}));
+  localStorage.setItem(SESSION_KEY, "1");
+  enterApp(user);
+}
+async function loginAccount(){
+  const acct = getAccount();
+  const pass = document.getElementById("authLoginPass").value;
+  const remember = document.getElementById("authRemember").checked;
+  const err = document.getElementById("authLoginError");
+  err.textContent = "";
+  if(!pass){ err.textContent = "Please enter your password."; return; }
+  const hash = await sha256Hex(acct.salt + pass);
+  if(hash !== acct.hash){ err.textContent = "Incorrect password."; return; }
+  if(remember){ localStorage.setItem(SESSION_KEY, "1"); }
+  else { sessionStorage.setItem(SESSION_TEMP_KEY, "1"); }
+  enterApp(acct.username);
+}
+function toggleChangePass(show){
+  document.getElementById("changePassBox").style.display = show ? "block" : "none";
+  document.getElementById("acctButtons").style.display = show ? "none" : "block";
+  document.getElementById("cpOld").value = "";
+  document.getElementById("cpNew").value = "";
+  document.getElementById("cpNew2").value = "";
+  document.getElementById("cpError").textContent = "";
+}
+async function changePassword(){
+  const acct = getAccount();
+  const oldPass = document.getElementById("cpOld").value;
+  const newPass = document.getElementById("cpNew").value;
+  const newPass2 = document.getElementById("cpNew2").value;
+  const err = document.getElementById("cpError");
+  err.textContent = "";
+  const oldHash = await sha256Hex(acct.salt + oldPass);
+  if(oldHash !== acct.hash){ err.textContent = "Current password is incorrect."; return; }
+  if(newPass.length < 4){ err.textContent = "New password must be at least 4 characters."; return; }
+  if(newPass !== newPass2){ err.textContent = "New passwords don't match."; return; }
+  const newSalt = randomSalt();
+  const newHash = await sha256Hex(newSalt + newPass);
+  localStorage.setItem(ACCOUNT_KEY, JSON.stringify({username: acct.username, salt: newSalt, hash: newHash}));
+  toggleChangePass(false);
+  alert("Password changed successfully.");
+}
+function logoutAccount(){
+  localStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(SESSION_TEMP_KEY);
+  location.reload();
+}
+function showResetConfirm(){
+  if(!confirm("This will permanently delete the account AND all data on this device (visits, payslips, history, settings). This cannot be undone. Continue?")) return;
+  localStorage.removeItem(ACCOUNT_KEY);
+  localStorage.removeItem(SESSION_KEY);
+  sessionStorage.removeItem(SESSION_TEMP_KEY);
+  localStorage.removeItem(STORAGE_KEY);
+  location.reload();
+}
+function enterApp(username){
+  document.getElementById("authGate").classList.add("hidden");
+  document.getElementById("acctUsername").textContent = username;
+}
+function initAuthGate(){
+  const acct = getAccount();
+  if(!acct){
+    document.getElementById("authCreateForm").style.display = "block";
+    document.getElementById("authLoginForm").style.display = "none";
+    return;
+  }
+  if(hasActiveSession()){
+    enterApp(acct.username);
+    return;
+  }
+  document.getElementById("authCreateForm").style.display = "none";
+  document.getElementById("authLoginForm").style.display = "block";
+  document.getElementById("authLoginSub").textContent = "Log in as " + acct.username;
+}
+// Allow Enter key to submit auth forms
+document.addEventListener("keydown", function(e){
+  if(e.key !== "Enter") return;
+  if(document.getElementById("authCreateForm").style.display !== "none"){
+    if(["authNewUser","authNewPass","authNewPass2"].includes(document.activeElement.id)) createAccount();
+  } else if(document.getElementById("authLoginForm").style.display !== "none"){
+    if(document.activeElement.id === "authLoginPass") loginAccount();
+  }
+});
+
 /* ---------------- Data model ---------------- */
 const STORAGE_KEY = "rafiCareLog_v1";
 
@@ -379,7 +580,8 @@ const seedData = {
   clients: [],
   visits: [],
   payslips: [],
-  history: []
+  history: [],
+  profile: { appName: "Care Log", name: "", company: "" }
 };
 
 let state = loadState();
@@ -398,6 +600,7 @@ function loadState(){
         return p;
       });
       if(!s.history) s.history = [];
+      if(!s.profile) s.profile = { appName: "Care Log", name: "", company: "" };
       return s;
     }
   }catch(e){}
@@ -590,6 +793,7 @@ function renderPay(){
 
 /* ---------------- Render: Settings ---------------- */
 function renderSettings(){
+  renderProfileFields();
   document.getElementById("rateInput").value = state.rate;
   const chipbox = document.getElementById("clientChips");
   chipbox.innerHTML = "";
@@ -614,6 +818,29 @@ function renderHistory(){
       <div><span class="ha">${h.action}</span><br><span class="hd">${h.detail}</span></div>
     </div>
   `).join("");
+}
+function saveProfile(){
+  state.profile.appName = document.getElementById("profAppName").value.trim() || "Care Log";
+  state.profile.name = document.getElementById("profName").value.trim();
+  state.profile.company = document.getElementById("profCompany").value.trim();
+  logHistory("Updated profile", state.profile.name || "(no name set)");
+  saveState();
+  applyProfileToHeader();
+}
+function applyProfileToHeader(){
+  const p = state.profile || {};
+  const appName = p.appName || "Care Log";
+  document.getElementById("pageTitle").textContent = appName;
+  document.getElementById("headerTitle").textContent = appName;
+  document.title = appName;
+  const parts = [p.name, p.company].filter(Boolean);
+  document.getElementById("headerSub").textContent = parts.length ? parts.join(" · ") : "Tap Settings to set your name & company";
+}
+function renderProfileFields(){
+  const p = state.profile || {};
+  document.getElementById("profAppName").value = p.appName || "";
+  document.getElementById("profName").value = p.name || "";
+  document.getElementById("profCompany").value = p.company || "";
 }
 function saveRate(){
   const val = parseFloat(document.getElementById("rateInput").value);
@@ -679,7 +906,8 @@ function exportExcel(){
   const ws4 = XLSX.utils.json_to_sheet(histRows);
   XLSX.utils.book_append_sheet(wb, ws4, "Edit History");
 
-  const fname = "Rafi_Care_Log_" + new Date().toISOString().slice(0,10) + ".xlsx";
+  const safeName = (state.profile && state.profile.appName ? state.profile.appName : "Care_Log").replace(/[^a-z0-9]+/gi, "_");
+  const fname = safeName + "_" + new Date().toISOString().slice(0,10) + ".xlsx";
   XLSX.writeFile(wb, fname);
 }
 
@@ -687,7 +915,7 @@ function exportData(){
   const blob = new Blob([JSON.stringify(state,null,2)], {type:"application/json"});
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "rafi-care-log-backup.json";
+  a.download = "care-log-backup.json";
   a.click();
 }
 function importData(evt){
@@ -970,6 +1198,7 @@ saveState = function(){
 /* ---------------- Init ---------------- */
 function renderAll(){
   document.getElementById("ratePill").textContent = "£"+state.rate.toFixed(2)+"/hr";
+  applyProfileToHeader();
   populateClientSelect();
   renderTotalsBar();
   renderLog();
@@ -979,6 +1208,7 @@ function renderAll(){
 }
 renderAll();
 checkSyncOnLoad();
+initAuthGate();
 
 // Hide install hint if already installed / previously dismissed
 if(window.matchMedia('(display-mode: standalone)').matches || localStorage.getItem("hideInstallHint")){
