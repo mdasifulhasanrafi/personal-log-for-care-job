@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#1b3a5c">
+<title>Rafi Care Log</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://alcdn.msauth.net/browser/3.18.0/js/msal-browser.min.js"></script>
+<style>
+  :root{
+    --navy:#1b3a5c;
+    --navy-dark:#122740;
+    --clay:#c76b3f;
+    --teal:#2f7d6b;
+    --amber:#c9922e;
+    --paper:#f6f3ee;
+    --card:#ffffff;
+    --ink:#20242b;
+    --ink-soft:#5b6472;
+    --line:#e3e0d8;
+    --danger:#b3492f;
+    --radius:14px;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
+  html,body{margin:0; padding:0; height:100%; background:var(--paper); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+  body{padding-bottom:78px; overflow-x:hidden;}
+
+  header.top{
+    position:sticky; top:0; z-index:20;
+    background:var(--navy); color:#fff;
+    padding:18px 18px 14px;
+    border-bottom-left-radius:18px; border-bottom-right-radius:18px;
+    box-shadow:0 6px 16px rgba(20,40,60,.18);
+  }
+  header.top .row1{display:flex; justify-content:space-between; align-items:center;}
+  header.top h1{font-size:19px; margin:0; font-weight:700; letter-spacing:.2px;}
+  header.top .sub{font-size:12.5px; opacity:.75; margin-top:2px;}
+  .rate-pill{
+    background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.25);
+    border-radius:999px; padding:6px 12px; font-size:12.5px; font-weight:600; white-space:nowrap;
+  }
+
+  main{max-width:520px; margin:0 auto; padding:16px 14px 10px;}
+  .view{display:none;}
+  .view.active{display:block; animation:fade .18s ease;}
+  @keyframes fade{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;}}
+
+  .card{background:var(--card); border-radius:var(--radius); padding:14px 16px; margin-bottom:12px;
+    box-shadow:0 1px 2px rgba(20,30,45,.05), 0 1px 12px rgba(20,30,45,.04); border:1px solid var(--line);}
+  .card h2{font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--ink-soft); margin:0 0 10px;}
+
+  .stat-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .stat{background:var(--card); border-radius:var(--radius); padding:14px; border:1px solid var(--line);}
+  .stat .label{font-size:11.5px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:.5px;}
+  .stat .value{font-size:20px; font-weight:700; margin-top:4px;}
+  .stat.owed .value{color:var(--amber);}
+  .stat.paid .value{color:var(--teal);}
+
+  /* Week blocks */
+  .week{margin-bottom:14px;}
+  .week-head{
+    display:flex; justify-content:space-between; align-items:center;
+    background:var(--navy); color:#fff; border-radius:10px;
+    padding:9px 13px; font-size:12.5px; font-weight:600; margin-bottom:6px;
+  }
+  .week-head .tot{background:rgba(255,255,255,.18); padding:3px 9px; border-radius:999px; font-size:12px;}
+  .day-row{
+    display:flex; align-items:center; gap:10px;
+    background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:10px 12px; margin-bottom:6px;
+  }
+  .day-row .date-chip{
+    width:44px; text-align:center; flex-shrink:0;
+  }
+  .day-row .date-chip .dow{font-size:10px; color:var(--ink-soft); text-transform:uppercase; font-weight:700;}
+  .day-row .date-chip .dom{font-size:16px; font-weight:700;}
+  .day-row .info{flex:1; min-width:0;}
+  .day-row .client{font-weight:600; font-size:14.5px;}
+  .day-row .meta{font-size:12px; color:var(--ink-soft); margin-top:1px;}
+  .day-row .hrs{font-weight:700; font-size:14px; color:var(--navy); flex-shrink:0;}
+  .day-row .del{color:var(--ink-soft); font-size:18px; padding:2px 4px; flex-shrink:0;}
+  .empty-note{font-size:12.5px; color:var(--ink-soft); text-align:center; padding:14px 0;}
+
+  table.pay{width:100%; border-collapse:collapse; font-size:13px;}
+  table.pay th{text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:.4px;
+    color:var(--ink-soft); padding:0 6px 8px; font-weight:700;}
+  table.pay td{padding:9px 6px; border-top:1px solid var(--line);}
+  table.pay tr.match td{color:var(--teal);}
+  table.pay tr.owed .left{color:var(--amber); font-weight:700;}
+  table.pay .num{text-align:right; white-space:nowrap;}
+  .badge{display:inline-block; font-size:10.5px; font-weight:700; padding:2px 8px; border-radius:999px;}
+  .badge.ok{background:#dff0ea; color:var(--teal);}
+  .badge.wait{background:#f7ecd8; color:var(--amber);}
+
+  /* Bottom nav */
+  nav.tabs{
+    position:fixed; bottom:0; left:0; right:0; z-index:30;
+    background:#fff; border-top:1px solid var(--line);
+    display:flex; padding:6px 4px calc(6px + env(safe-area-inset-bottom));
+    box-shadow:0 -2px 14px rgba(20,30,45,.06);
+  }
+  nav.tabs button{
+    flex:1; background:none; border:none; padding:8px 2px 4px; font-size:10.5px;
+    color:var(--ink-soft); font-weight:600; display:flex; flex-direction:column; align-items:center; gap:3px;
+  }
+  nav.tabs button .ic{font-size:19px; line-height:1;}
+  nav.tabs button.active{color:var(--navy);}
+
+  .fab{
+    position:fixed; right:18px; bottom:82px; z-index:25;
+    width:56px; height:56px; border-radius:50%;
+    background:var(--clay); color:#fff; border:none; font-size:28px;
+    box-shadow:0 6px 16px rgba(199,107,63,.45);
+  }
+
+  /* Modal */
+  .overlay{position:fixed; inset:0; background:rgba(20,25,35,.45); z-index:50; display:none; align-items:flex-end;}
+  .overlay.show{display:flex;}
+  .sheet{
+    background:#fff; width:100%; max-width:520px; margin:0 auto;
+    border-top-left-radius:20px; border-top-right-radius:20px;
+    padding:18px 18px calc(18px + env(safe-area-inset-bottom)); max-height:88vh; overflow-y:auto;
+    animation:slideup .2s ease;
+  }
+  @keyframes slideup{from{transform:translateY(30px); opacity:0;} to{transform:none; opacity:1;}}
+  .sheet h3{margin:0 0 14px; font-size:16px;}
+  .field{margin-bottom:12px;}
+  .field label{display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:5px;}
+  .field select, .field input{
+    width:100%; padding:11px 12px; border-radius:10px; border:1px solid var(--line);
+    font-size:15px; background:#fbfaf8; color:var(--ink);
+  }
+  .row2{display:flex; gap:10px;}
+  .row2 .field{flex:1;}
+  .btn{
+    width:100%; padding:13px; border-radius:12px; border:none; font-size:15px; font-weight:700;
+    background:var(--navy); color:#fff; margin-top:6px;
+  }
+  .btn.secondary{background:#eee; color:var(--ink);}
+  .btn.danger{background:var(--danger); color:#fff;}
+  .chiplist{display:flex; flex-wrap:wrap; gap:8px; margin-top:4px;}
+  .chip{
+    background:#eef1f4; border-radius:999px; padding:7px 12px; font-size:13px; font-weight:600;
+    display:flex; align-items:center; gap:6px;
+  }
+  .chip .x{color:var(--danger); font-weight:900; cursor:pointer;}
+  .newclient{display:flex; gap:8px; margin-top:10px;}
+  .newclient input{flex:1;}
+  .newclient button{padding:0 16px; border-radius:10px; border:none; background:var(--navy); color:#fff; font-weight:700;}
+
+  .install-hint{font-size:12px; color:var(--ink-soft); line-height:1.5; background:#eef4f1; border:1px solid #d5e6df;
+    border-radius:12px; padding:12px 14px; margin-bottom:12px;}
+  .install-hint b{color:var(--teal);}
+
+  /* Persistent totals bar (all tabs) */
+  .totals-bar{
+    display:flex; max-width:520px; margin:10px auto 0; padding:0 14px;
+    gap:8px;
+  }
+  .totals-bar .t{
+    flex:1; background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.18);
+    border-radius:10px; padding:7px 8px; text-align:center;
+  }
+  .totals-bar .t .tl{font-size:9.5px; color:rgba(255,255,255,.7); text-transform:uppercase; letter-spacing:.3px;}
+  .totals-bar .t .tv{font-size:13.5px; font-weight:700; color:#fff; margin-top:1px;}
+  .totals-bar .t.left .tv{color:#f3d18a;}
+  .totals-bar .t.paid .tv{color:#a9e0cf;}
+
+  /* Payslip cards */
+  .pay-card{
+    background:var(--card); border:1px solid var(--line); border-radius:12px;
+    padding:12px 14px; margin-bottom:10px;
+  }
+  .pay-card .ph{display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;}
+  .pay-card .ph .mo{font-weight:700; font-size:14.5px;}
+  .pay-card .grid{display:grid; grid-template-columns:1fr 1fr; gap:6px 14px; font-size:12.5px;}
+  .pay-card .grid .k{color:var(--ink-soft);}
+  .pay-card .grid .v{font-weight:600; text-align:right;}
+  .pay-card .grid .v.hl{color:var(--amber);}
+  .pay-preview{background:#f6f3ee; border-radius:12px; padding:12px 14px; margin-bottom:6px;}
+  .pay-preview .grid{display:grid; grid-template-columns:1fr 1fr; gap:6px 14px; font-size:12.5px;}
+  .pay-preview .grid .k{color:var(--ink-soft);}
+  .pay-preview .grid .v{font-weight:600; text-align:right;}
+  .pay-preview .grid .v.hl{color:var(--amber);}
+
+  .hist-row{display:flex; gap:10px; padding:9px 0; border-top:1px solid var(--line); font-size:12.5px;}
+  .hist-row:first-child{border-top:none;}
+  .hist-row .ht{color:var(--ink-soft); flex-shrink:0; width:78px;}
+  .hist-row .ha{font-weight:600;}
+  .hist-row .hd{color:var(--ink-soft);}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="row1">
+    <div>
+      <h1>Rafi Care Log</h1>
+      <div class="sub" id="headerSub">Md Asiful Hasan Rafi · Nubah Social Care</div>
+    </div>
+    <div class="rate-pill" id="ratePill">£13.10/hr</div>
+  </div>
+  <div class="totals-bar">
+    <div class="t"><div class="tl">Total hours</div><div class="tv" id="barHours">0</div></div>
+    <div class="t left"><div class="tl">Left</div><div class="tv" id="barLeft">£0</div></div>
+    <div class="t paid"><div class="tl">Received</div><div class="tv" id="barPaid">£0</div></div>
+  </div>
+</header>
+
+<main>
+
+  <!-- LOG VIEW -->
+  <section class="view active" id="view-log">
+    <div class="install-hint" id="installHint">
+      📲 Tip: tap your browser menu → <b>"Add to Home screen"</b> to use this like an app.
+    </div>
+    <div id="weeksContainer"></div>
+  </section>
+
+  <!-- SUMMARY VIEW -->
+  <section class="view" id="view-summary">
+    <div class="stat-grid" style="margin-bottom:14px;">
+      <div class="stat owed"><div class="label">Left to be paid</div><div class="value" id="statLeft">£0</div></div>
+      <div class="stat paid"><div class="label">Received</div><div class="value" id="statPaid">£0</div></div>
+      <div class="stat"><div class="label" id="statExpectedLabel">Expected this month</div><div class="value" id="statExpected">£0</div></div>
+      <div class="stat"><div class="label" id="statHoursLabel">Hours this month</div><div class="value" id="statHours">0</div></div>
+    </div>
+    <div class="card">
+      <h2>Monthly hours</h2>
+      <table class="pay" id="monthlyHoursTable"></table>
+    </div>
+  </section>
+
+  <!-- PAYSLIPS VIEW -->
+  <section class="view" id="view-pay">
+    <h2 style="font-size:13px; text-transform:uppercase; letter-spacing:.6px; color:var(--ink-soft); margin:2px 4px 10px;">Tap a month to edit its payslip</h2>
+    <div id="paySlipTable"></div>
+  </section>
+
+  <!-- SETTINGS VIEW -->
+  <section class="view" id="view-settings">
+    <div class="card">
+      <h2>☁️ OneDrive live sync</h2>
+      <div id="syncSetupBox">
+        <div class="field">
+          <label>Azure App Client ID</label>
+          <input id="msalClientIdInput" placeholder="Paste your Client ID here">
+        </div>
+        <button class="btn" onclick="signInOneDrive()">Connect to OneDrive</button>
+      </div>
+      <div id="syncConnectedBox" style="display:none;">
+        <div style="font-size:13px; margin-bottom:4px;">Signed in as <b id="syncAccountName"></b></div>
+        <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;" id="syncStatus">Not synced yet</div>
+        <button class="btn" onclick="pushToOneDrive(true)">Sync now</button>
+        <button class="btn secondary" style="margin-top:8px;" onclick="signOutOneDrive()">Disconnect</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Hourly rate</h2>
+      <div class="field">
+        <input type="number" step="0.01" id="rateInput">
+      </div>
+      <button class="btn" onclick="saveRate()">Save rate</button>
+    </div>
+    <div class="card">
+      <h2>Clients</h2>
+      <div class="chiplist" id="clientChips"></div>
+      <div class="newclient">
+        <input id="newClientInput" placeholder="New client name">
+        <button onclick="addClient()">Add</button>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Backup</h2>
+      <button class="btn" onclick="exportExcel()">⬇️ Export to Excel (.xlsx)</button>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-top:8px; line-height:1.5;">
+        Save the file to OneDrive (or upload it in Excel Online) to keep it in the cloud. Each time you export and re-upload, OneDrive keeps the old version too — open the file there and use <b>File → Version history</b> to see or restore past versions.
+      </div>
+      <button class="btn secondary" style="margin-top:10px;" onclick="exportData()">Export raw backup (.json)</button>
+      <input type="file" id="importFileInput" accept=".json" style="display:none;" onchange="importData(event)">
+      <button class="btn secondary" style="margin-top:8px;" onclick="document.getElementById('importFileInput').click()">Import backup (.json)</button>
+    </div>
+    <div class="card">
+      <h2>Edit history</h2>
+      <div id="historyList"></div>
+    </div>
+    <div class="card">
+      <h2>Data</h2>
+      <button class="btn danger" onclick="resetData()">Reset all data</button>
+    </div>
+  </section>
+
+</main>
+
+<button class="fab" id="fabAdd" onclick="openAddVisit()">+</button>
+
+<nav class="tabs">
+  <button class="tab-btn active" data-view="log"><span class="ic">📅</span>Log</button>
+  <button class="tab-btn" data-view="summary"><span class="ic">📊</span>Summary</button>
+  <button class="tab-btn" data-view="pay"><span class="ic">💷</span>Payslips</button>
+  <button class="tab-btn" data-view="settings"><span class="ic">⚙️</span>Settings</button>
+</nav>
+
+<!-- Add / Edit Visit Sheet -->
+<div class="overlay" id="visitOverlay">
+  <div class="sheet">
+    <h3 id="visitSheetTitle">Add visit</h3>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="vDate">
+    </div>
+    <div class="field">
+      <label>Client</label>
+      <select id="vClient"></select>
+    </div>
+    <div class="field">
+      <label>Visit</label>
+      <select id="vVisit">
+        <option>Morning</option><option>Lunch</option><option>Tea</option><option>Bed</option><option>Other</option>
+      </select>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Start time</label><input type="time" id="vStart"></div>
+      <div class="field"><label>End time</label><input type="time" id="vEnd"></div>
+    </div>
+    <button class="btn" onclick="saveVisit()">Save visit</button>
+    <button class="btn secondary" onclick="closeVisitSheet()">Cancel</button>
+  </div>
+</div>
+
+<!-- Add / Edit Payslip Sheet -->
+<div class="overlay" id="payOverlay">
+  <div class="sheet">
+    <h3>Payslip details</h3>
+    <div class="field">
+      <label>Month</label>
+      <input type="month" id="pMonth">
+    </div>
+    <div class="field">
+      <label>Payslip date</label>
+      <input type="date" id="pDate">
+    </div>
+    <div class="row2">
+      <div class="field"><label>Payment got (£)</label><input type="number" step="0.01" id="pPayment" oninput="updatePayPreview()"></div>
+      <div class="field"><label>Hours paid for</label><input type="number" step="0.01" id="pHoursPaid" oninput="updatePayPreview()"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>NI (£)</label><input type="number" step="0.01" id="pNI" value="0" oninput="updatePayPreview()"></div>
+      <div class="field"><label>Tax (£)</label><input type="number" step="0.01" id="pTax" value="0" oninput="updatePayPreview()"></div>
+    </div>
+    <div class="pay-preview">
+      <div class="grid">
+        <div class="k">Hours logged this month</div><div class="v" id="prevLoggedHrs">0</div>
+        <div class="k">Hours left</div><div class="v hl" id="prevHoursLeft">0</div>
+        <div class="k">Total payment got (net)</div><div class="v" id="prevNet">£0.00</div>
+      </div>
+    </div>
+    <button class="btn" onclick="savePayslip()">Save payslip</button>
+    <button class="btn secondary" onclick="closePaySheet()">Cancel</button>
+  </div>
+</div>
+
+<script>
+/* ---------------- Data model ---------------- */
+const STORAGE_KEY = "rafiCareLog_v1";
+
+const seedData = {
+  rate: 13.10,
+  clients: [],
+  visits: [],
+  payslips: [],
+  history: []
+};
+
+let state = loadState();
+
+function loadState(){
+  try{
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(raw){
+      const s = JSON.parse(raw);
+      // migrate old payslip format {amount} -> new richer format
+      if(s.payslips) s.payslips = s.payslips.map(p=>{
+        if(p.paymentGot===undefined){
+          return {id:p.id, month:p.month, dateIssued:p.dateIssued,
+                  paymentGot:p.amount||0, ni:0, tax:0, hoursPaidFor:null};
+        }
+        return p;
+      });
+      if(!s.history) s.history = [];
+      return s;
+    }
+  }catch(e){}
+  return JSON.parse(JSON.stringify(seedData));
+}
+function saveState(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+function logHistory(action, detail){
+  state.history.unshift({ts:new Date().toISOString(), action, detail});
+  if(state.history.length>500) state.history.length = 500; // cap
+}
+function fmtHistTime(iso){
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}) + " " +
+         d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+}
+
+/* ---------------- Helpers ---------------- */
+function hoursBetween(start,end){
+  if(!start || !end) return 0;
+  const [sh,sm]=start.split(":").map(Number);
+  const [eh,em]=end.split(":").map(Number);
+  let h = (eh+em/60)-(sh+sm/60);
+  if(h<0) h+=24;
+  return Math.round(h*100)/100;
+}
+function fmtMoney(n){ return "£"+ (Math.round(n*100)/100).toLocaleString('en-GB',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function mondayOf(dateStr){
+  const d = new Date(dateStr+"T00:00:00");
+  const day = (d.getDay()+6)%7; // 0=Mon
+  d.setDate(d.getDate()-day);
+  return d;
+}
+function addDays(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
+function iso(d){ return d.toISOString().slice(0,10); }
+function fmtShort(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
+function fmtDow(dateStr){ return new Date(dateStr+"T00:00:00").toLocaleDateString('en-GB',{weekday:'short'}); }
+function fmtDom(dateStr){ return new Date(dateStr+"T00:00:00").getDate(); }
+function monthLabel(ym){
+  const [y,m]=ym.split("-").map(Number);
+  return new Date(y,m-1,1).toLocaleDateString('en-GB',{month:'short',year:'numeric'});
+}
+
+/* ---------------- Render: Log (weeks) ---------------- */
+function renderLog(){
+  const container = document.getElementById("weeksContainer");
+  container.innerHTML = "";
+  if(state.visits.length===0){
+    container.innerHTML = '<div class="empty-note">No visits logged yet. Tap + to add your first one.</div>';
+    return;
+  }
+  const byWeek = {};
+  state.visits.forEach(v=>{
+    const wk = iso(mondayOf(v.date));
+    (byWeek[wk] = byWeek[wk]||[]).push(v);
+  });
+  const weekKeys = Object.keys(byWeek).sort().reverse();
+  weekKeys.forEach(wk=>{
+    const items = byWeek[wk].slice().sort((a,b)=> b.date.localeCompare(a.date));
+    const weekTotal = items.reduce((s,v)=>s+hoursBetween(v.start,v.end),0);
+    const wkStart = new Date(wk+"T00:00:00");
+    const wkEnd = addDays(wkStart,6);
+    const block = document.createElement("div");
+    block.className="week";
+    block.innerHTML = `<div class="week-head"><span>${fmtShort(wkStart)} – ${fmtShort(wkEnd)}</span><span class="tot">${weekTotal.toFixed(2)} hrs</span></div>`;
+    items.forEach(v=>{
+      const hrs = hoursBetween(v.start,v.end);
+      const row = document.createElement("div");
+      row.className="day-row";
+      row.innerHTML = `
+        <div class="date-chip"><div class="dow">${fmtDow(v.date)}</div><div class="dom">${fmtDom(v.date)}</div></div>
+        <div class="info">
+          <div class="client">${v.client||'<span style="color:#b3492f">No client set</span>'}</div>
+          <div class="meta">${v.visit} · ${v.start||'--:--'}–${v.end||'--:--'}</div>
+        </div>
+        <div class="hrs">${hrs.toFixed(2)}h</div>
+        <div class="del" data-id="${v.id}">✕</div>
+      `;
+      row.querySelector(".info").onclick = ()=>openEditVisit(v.id);
+      row.querySelector(".client").onclick = ()=>openEditVisit(v.id);
+      row.querySelector(".del").onclick = (e)=>{ e.stopPropagation(); deleteVisit(v.id); };
+      block.appendChild(row);
+    });
+    container.appendChild(block);
+  });
+}
+
+/* ---------------- Render: Summary (monthly) ---------------- */
+function allMonthKeys(){
+  const set = new Set();
+  state.visits.forEach(v=> set.add(v.date.slice(0,7)));
+  state.payslips.forEach(p=> set.add(p.month));
+  if(set.size===0){ const now=new Date(); set.add(now.toISOString().slice(0,7)); }
+  return Array.from(set).sort();
+}
+function monthlyStats(){
+  const months = allMonthKeys();
+  return months.map(ym=>{
+    const hrs = state.visits.filter(v=>v.date.slice(0,7)===ym)
+      .reduce((s,v)=>s+hoursBetween(v.start,v.end),0);
+    const expected = hrs*state.rate;
+    const slip = state.payslips.find(p=>p.month===ym);
+    let received = 0, hoursPaidFor = 0, hoursLeft = hrs, ni=0, tax=0, paymentGot=0, dateIssued="";
+    if(slip){
+      ni = Number(slip.ni)||0;
+      tax = Number(slip.tax)||0;
+      paymentGot = Number(slip.paymentGot)||0;
+      received = paymentGot - ni - tax; // total payment got (net)
+      hoursPaidFor = slip.hoursPaidFor!=null ? Number(slip.hoursPaidFor) : hrs;
+      hoursLeft = hrs - hoursPaidFor;
+      dateIssued = slip.dateIssued||"";
+    }
+    const left = expected - received;
+    return {ym, hrs, expected, received, left, hasSlip: !!slip, paymentGot, ni, tax, hoursPaidFor, hoursLeft, dateIssued};
+  });
+}
+function currentMonthKey(){
+  const d = new Date();
+  return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
+}
+function renderTotalsBar(){
+  const rows = monthlyStats();
+  const totHours = rows.reduce((s,r)=>s+r.hrs,0);
+  const totExpected = rows.reduce((s,r)=>s+r.expected,0);
+  const totReceived = rows.reduce((s,r)=>s+r.received,0);
+  const totLeft = totExpected-totReceived;
+  document.getElementById("barHours").textContent = totHours.toFixed(2);
+  document.getElementById("barLeft").textContent = fmtMoney(totLeft);
+  document.getElementById("barPaid").textContent = fmtMoney(totReceived);
+}
+function renderSummary(){
+  const rows = monthlyStats();
+  const totExpected = rows.reduce((s,r)=>s+r.expected,0);
+  const totReceived = rows.reduce((s,r)=>s+r.received,0);
+  const totLeft = totExpected-totReceived;
+
+  const thisMonth = currentMonthKey();
+  const thisRow = rows.find(r=>r.ym===thisMonth);
+  const thisHours = thisRow ? thisRow.hrs : 0;
+  const thisExpected = thisHours*state.rate;
+
+  document.getElementById("statLeft").textContent = fmtMoney(totLeft);
+  document.getElementById("statPaid").textContent = fmtMoney(totReceived);
+  document.getElementById("statExpected").textContent = fmtMoney(thisExpected);
+  document.getElementById("statExpectedLabel").textContent = "Expected this month (" + monthLabel(thisMonth) + ")";
+  document.getElementById("statHours").textContent = thisHours.toFixed(2);
+  document.getElementById("statHoursLabel").textContent = "Hours this month";
+
+  const table = document.getElementById("monthlyHoursTable");
+  let html = "<tr><th>Month</th><th class='num'>Hours</th><th class='num'>Paid for</th><th class='num'>Left</th></tr>";
+  rows.slice().reverse().forEach(r=>{
+    html += `<tr class="${r.left<=0.001 ? 'match':'owed'}">
+      <td>${monthLabel(r.ym)}</td>
+      <td class="num">${r.hrs.toFixed(2)}</td>
+      <td class="num">${fmtMoney(r.expected)}</td>
+      <td class="num left">${fmtMoney(r.left)}</td>
+    </tr>`;
+  });
+  table.innerHTML = html;
+}
+
+/* ---------------- Render: Payslips ---------------- */
+function renderPay(){
+  const rows = monthlyStats();
+  const box = document.getElementById("paySlipTable");
+  box.innerHTML = "";
+  rows.slice().reverse().forEach(r=>{
+    const badge = r.hasSlip
+      ? (Math.abs(r.hoursLeft)<0.01 ? '<span class="badge ok">Fully paid</span>' : '<span class="badge wait">Partial</span>')
+      : '<span class="badge wait">Awaiting</span>';
+    const card = document.createElement("div");
+    card.className = "pay-card";
+    card.innerHTML = `
+      <div class="ph"><span class="mo">${monthLabel(r.ym)}</span>${badge}</div>
+      <div class="grid">
+        <div class="k">Payslip date</div><div class="v">${r.dateIssued || '—'}</div>
+        <div class="k">Payment got</div><div class="v">${r.hasSlip ? fmtMoney(r.paymentGot) : '—'}</div>
+        <div class="k">Tax / NI</div><div class="v">${r.hasSlip ? fmtMoney(r.tax)+' / '+fmtMoney(r.ni) : '—'}</div>
+        <div class="k">Total payment got</div><div class="v">${r.hasSlip ? fmtMoney(r.received) : '—'}</div>
+        <div class="k">Hours logged</div><div class="v">${r.hrs.toFixed(2)}</div>
+        <div class="k">Hours paid for</div><div class="v">${r.hasSlip ? r.hoursPaidFor.toFixed(2) : '—'}</div>
+        <div class="k">Hours left</div><div class="v hl">${r.hasSlip ? r.hoursLeft.toFixed(2) : r.hrs.toFixed(2)}</div>
+      </div>
+    `;
+    card.onclick = ()=> openPaySheet(r.ym);
+    box.appendChild(card);
+  });
+}
+
+/* ---------------- Render: Settings ---------------- */
+function renderSettings(){
+  document.getElementById("rateInput").value = state.rate;
+  const chipbox = document.getElementById("clientChips");
+  chipbox.innerHTML = "";
+  state.clients.forEach(c=>{
+    const chip = document.createElement("div");
+    chip.className="chip";
+    chip.innerHTML = `${c} <span class="x" data-c="${c}">✕</span>`;
+    chip.querySelector(".x").onclick = ()=>removeClient(c);
+    chipbox.appendChild(chip);
+  });
+  renderHistory();
+}
+function renderHistory(){
+  const box = document.getElementById("historyList");
+  if(!state.history || state.history.length===0){
+    box.innerHTML = '<div class="empty-note" style="padding:6px 0;">No edits yet.</div>';
+    return;
+  }
+  box.innerHTML = state.history.slice(0,50).map(h=>`
+    <div class="hist-row">
+      <div class="ht">${fmtHistTime(h.ts)}</div>
+      <div><span class="ha">${h.action}</span><br><span class="hd">${h.detail}</span></div>
+    </div>
+  `).join("");
+}
+function saveRate(){
+  const val = parseFloat(document.getElementById("rateInput").value);
+  if(!isNaN(val) && val>0){
+    logHistory("Changed rate", `£${state.rate.toFixed(2)} → £${val.toFixed(2)}`);
+    state.rate = val; saveState(); renderAll();
+  }
+}
+function addClient(){
+  const inp = document.getElementById("newClientInput");
+  const name = inp.value.trim();
+  if(name && !state.clients.includes(name)){
+    state.clients.push(name);
+    logHistory("Added client", name);
+    saveState(); inp.value=""; renderSettings(); populateClientSelect();
+  }
+}
+function removeClient(name){
+  if(!confirm(`Remove "${name}" from client list? Existing visits keep their client name.`)) return;
+  state.clients = state.clients.filter(c=>c!==name);
+  logHistory("Removed client", name);
+  saveState(); renderSettings(); populateClientSelect();
+}
+function exportExcel(){
+  if(typeof XLSX === "undefined"){
+    alert("Excel export needs an internet connection the first time (to load the export library). Please connect and try again.");
+    return;
+  }
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: Daily Log
+  const visitRows = state.visits.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(v=>({
+    Date: v.date, Day: new Date(v.date+"T00:00:00").toLocaleDateString('en-GB',{weekday:'short'}),
+    Client: v.client, Visit: v.visit, "Start Time": v.start, "End Time": v.end,
+    Hours: hoursBetween(v.start,v.end)
+  }));
+  const ws1 = XLSX.utils.json_to_sheet(visitRows);
+  XLSX.utils.book_append_sheet(wb, ws1, "Daily Log");
+
+  // Sheet 2: Monthly Summary
+  const rows = monthlyStats();
+  const summaryRows = rows.map(r=>({
+    Month: monthLabel(r.ym), "Hours Logged": r.hrs.toFixed(2), "Rate": state.rate,
+    "Expected Pay (£)": r.expected.toFixed(2), "Amount Received (£)": r.received.toFixed(2),
+    "Amount Left (£)": r.left.toFixed(2)
+  }));
+  const ws2 = XLSX.utils.json_to_sheet(summaryRows);
+  XLSX.utils.book_append_sheet(wb, ws2, "Monthly Summary");
+
+  // Sheet 3: Payslips
+  const paySlipRows = rows.filter(r=>r.hasSlip).map(r=>({
+    Month: monthLabel(r.ym), "Payslip Date": r.dateIssued, "Payment Got (£)": r.paymentGot,
+    "NI (£)": r.ni, "Tax (£)": r.tax, "Total Payment Got (£)": r.received,
+    "Hours Paid For": r.hoursPaidFor, "Hours Left": r.hoursLeft
+  }));
+  const ws3 = XLSX.utils.json_to_sheet(paySlipRows);
+  XLSX.utils.book_append_sheet(wb, ws3, "Payslips");
+
+  // Sheet 4: Edit History
+  const histRows = (state.history||[]).map(h=>({
+    Date: fmtHistTime(h.ts), Action: h.action, Detail: h.detail
+  }));
+  const ws4 = XLSX.utils.json_to_sheet(histRows);
+  XLSX.utils.book_append_sheet(wb, ws4, "Edit History");
+
+  const fname = "Rafi_Care_Log_" + new Date().toISOString().slice(0,10) + ".xlsx";
+  XLSX.writeFile(wb, fname);
+}
+
+function exportData(){
+  const blob = new Blob([JSON.stringify(state,null,2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "rafi-care-log-backup.json";
+  a.click();
+}
+function importData(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e){
+    try{
+      const imported = JSON.parse(e.target.result);
+      if(!imported.visits || !imported.clients){ alert("This doesn't look like a valid backup file."); return; }
+      if(!confirm("This will replace all current data on this device with the imported backup. Continue?")) return;
+      state = imported;
+      if(!state.history) state.history = [];
+      saveState();
+      renderAll();
+      alert("Backup imported successfully.");
+    }catch(err){
+      alert("Couldn't read that file: " + err.message);
+    }
+    evt.target.value = "";
+  };
+  reader.readAsText(file);
+}
+function resetData(){
+  if(!confirm("This will erase all visits, payslips and settings on this device. Continue?")) return;
+  state = JSON.parse(JSON.stringify(seedData));
+  saveState(); renderAll();
+}
+
+/* ---------------- Visit sheet ---------------- */
+let editingVisitId = null;
+function populateClientSelect(){
+  const sel = document.getElementById("vClient");
+  sel.innerHTML = "";
+  state.clients.forEach(c=>{
+    const o = document.createElement("option"); o.value=c; o.textContent=c; sel.appendChild(o);
+  });
+}
+function openAddVisit(){
+  editingVisitId = null;
+  document.getElementById("visitSheetTitle").textContent = "Add visit";
+  document.getElementById("vDate").value = new Date().toISOString().slice(0,10);
+  populateClientSelect();
+  document.getElementById("vVisit").value = "Morning";
+  document.getElementById("vStart").value = "";
+  document.getElementById("vEnd").value = "";
+  document.getElementById("visitOverlay").classList.add("show");
+}
+function openEditVisit(id){
+  const v = state.visits.find(x=>x.id===id);
+  if(!v) return;
+  editingVisitId = id;
+  document.getElementById("visitSheetTitle").textContent = "Edit visit";
+  document.getElementById("vDate").value = v.date;
+  populateClientSelect();
+  document.getElementById("vClient").value = v.client;
+  document.getElementById("vVisit").value = v.visit;
+  document.getElementById("vStart").value = v.start;
+  document.getElementById("vEnd").value = v.end;
+  document.getElementById("visitOverlay").classList.add("show");
+}
+function closeVisitSheet(){ document.getElementById("visitOverlay").classList.remove("show"); }
+function saveVisit(){
+  const date = document.getElementById("vDate").value;
+  const client = document.getElementById("vClient").value;
+  const visit = document.getElementById("vVisit").value;
+  const start = document.getElementById("vStart").value;
+  const end = document.getElementById("vEnd").value;
+  if(!date){ alert("Please pick a date."); return; }
+  if(editingVisitId){
+    const v = state.visits.find(x=>x.id===editingVisitId);
+    Object.assign(v,{date,client,visit,start,end});
+    logHistory("Edited visit", `${date} · ${client||'(no client)'} · ${visit} · ${start||'--'}-${end||'--'}`);
+  }else{
+    state.visits.push({id:"v"+Date.now(),date,client,visit,start,end});
+    logHistory("Added visit", `${date} · ${client||'(no client)'} · ${visit} · ${start||'--'}-${end||'--'}`);
+  }
+  saveState();
+  closeVisitSheet();
+  renderAll();
+}
+function deleteVisit(id){
+  if(!confirm("Delete this visit?")) return;
+  const v = state.visits.find(x=>x.id===id);
+  if(v) logHistory("Deleted visit", `${v.date} · ${v.client||'(no client)'} · ${v.visit} · ${v.start||'--'}-${v.end||'--'}`);
+  state.visits = state.visits.filter(v=>v.id!==id);
+  saveState();
+  renderAll();
+}
+
+/* ---------------- Payslip sheet ---------------- */
+function hoursLoggedForMonth(ym){
+  return state.visits.filter(v=>v.date.slice(0,7)===ym)
+    .reduce((s,v)=>s+hoursBetween(v.start,v.end),0);
+}
+function openPaySheet(ym){
+  const existing = state.payslips.find(p=>p.month===ym);
+  document.getElementById("pMonth").value = ym;
+  document.getElementById("pDate").value = existing ? existing.dateIssued : "";
+  document.getElementById("pPayment").value = existing ? existing.paymentGot : "";
+  document.getElementById("pNI").value = existing ? existing.ni : 0;
+  document.getElementById("pTax").value = existing ? existing.tax : 0;
+  document.getElementById("pHoursPaid").value = existing && existing.hoursPaidFor!=null
+    ? existing.hoursPaidFor : hoursLoggedForMonth(ym).toFixed(2);
+  updatePayPreview();
+  document.getElementById("payOverlay").classList.add("show");
+}
+function updatePayPreview(){
+  const ym = document.getElementById("pMonth").value;
+  const payment = parseFloat(document.getElementById("pPayment").value)||0;
+  const ni = parseFloat(document.getElementById("pNI").value)||0;
+  const tax = parseFloat(document.getElementById("pTax").value)||0;
+  const hoursPaid = parseFloat(document.getElementById("pHoursPaid").value)||0;
+  const logged = ym ? hoursLoggedForMonth(ym) : 0;
+  const net = payment - ni - tax;
+  const left = logged - hoursPaid;
+  document.getElementById("prevLoggedHrs").textContent = logged.toFixed(2);
+  document.getElementById("prevHoursLeft").textContent = left.toFixed(2);
+  document.getElementById("prevNet").textContent = fmtMoney(net);
+}
+document.getElementById("pMonth").addEventListener("change", updatePayPreview);
+function closePaySheet(){ document.getElementById("payOverlay").classList.remove("show"); }
+function savePayslip(){
+  const month = document.getElementById("pMonth").value;
+  const dateIssued = document.getElementById("pDate").value;
+  const paymentGot = parseFloat(document.getElementById("pPayment").value);
+  const ni = parseFloat(document.getElementById("pNI").value)||0;
+  const tax = parseFloat(document.getElementById("pTax").value)||0;
+  const hoursPaidFor = parseFloat(document.getElementById("pHoursPaid").value);
+  if(!month || isNaN(paymentGot)){ alert("Please fill in month and payment amount."); return; }
+  let slip = state.payslips.find(p=>p.month===month);
+  const data = {dateIssued, paymentGot, ni, tax, hoursPaidFor: isNaN(hoursPaidFor)?null:hoursPaidFor};
+  if(slip){
+    Object.assign(slip, data);
+    logHistory("Edited payslip", `${monthLabel(month)} · £${paymentGot.toFixed(2)} got · ${hoursPaidFor||0}h paid for`);
+  }else{
+    state.payslips.push({id:"p"+Date.now(), month, ...data});
+    logHistory("Added payslip", `${monthLabel(month)} · £${paymentGot.toFixed(2)} got · ${hoursPaidFor||0}h paid for`);
+  }
+  saveState();
+  closePaySheet();
+  renderAll();
+}
+
+/* ---------------- Nav ---------------- */
+document.querySelectorAll(".tab-btn").forEach(btn=>{
+  btn.onclick = ()=>{
+    document.querySelectorAll(".tab-btn").forEach(b=>b.classList.remove("active"));
+    document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("view-"+btn.dataset.view).classList.add("active");
+    document.getElementById("fabAdd").style.display = btn.dataset.view==="log" ? "flex" : "none";
+  };
+});
+
+/* ---------------- OneDrive Live Sync ---------------- */
+const SYNC_FILE = "rafi-care-log-data.json";
+let msalInstance = null;
+let syncAccount = null;
+let pushTimer = null;
+
+function msalConfig(clientId){
+  return {
+    auth: {
+      clientId: clientId,
+      authority: "https://login.microsoftonline.com/consumers",
+      redirectUri: window.location.origin + window.location.pathname
+    },
+    cache: { cacheLocation: "localStorage" }
+  };
+}
+async function initMsal(){
+  const clientId = localStorage.getItem("msalClientId");
+  if(!clientId || typeof msal==="undefined") return false;
+  if(!msalInstance){
+    msalInstance = new msal.PublicClientApplication(msalConfig(clientId));
+    await msalInstance.initialize();
+  }
+  return true;
+}
+async function signInOneDrive(){
+  const clientId = document.getElementById("msalClientIdInput").value.trim();
+  if(!clientId){ alert("Paste your Azure app Client ID first — see setup instructions."); return; }
+  localStorage.setItem("msalClientId", clientId);
+  if(!(await initMsal())){ alert("Could not load sign-in library. Check your internet connection."); return; }
+  try{
+    await msalInstance.loginRedirect({scopes:["Files.ReadWrite.AppFolder"]});
+  }catch(e){
+    alert("Sign-in failed: " + e.message);
+  }
+}
+function signOutOneDrive(){
+  localStorage.removeItem("msalClientId");
+  if(msalInstance){
+    const acc = msalInstance.getAllAccounts()[0];
+    if(acc) msalInstance.logoutRedirect({account:acc});
+  }
+  syncAccount = null;
+  updateSyncUI(false);
+}
+async function getGraphToken(){
+  if(!(await initMsal())) return null;
+  const accounts = msalInstance.getAllAccounts();
+  if(accounts.length===0) return null;
+  syncAccount = accounts[0];
+  try{
+    const resp = await msalInstance.acquireTokenSilent({scopes:["Files.ReadWrite.AppFolder"], account: syncAccount});
+    return resp.accessToken;
+  }catch(e){
+    await msalInstance.acquireTokenRedirect({scopes:["Files.ReadWrite.AppFolder"]});
+    return null;
+  }
+}
+async function pushToOneDrive(manual){
+  const token = await getGraphToken();
+  if(!token){ if(manual) alert("Not signed in to OneDrive yet."); return; }
+  const payload = JSON.stringify(Object.assign({}, state, {lastSynced: new Date().toISOString()}));
+  const url = `https://graph.microsoft.com/v1.0/me/drive/special/approot:/${SYNC_FILE}:/content`;
+  try{
+    const resp = await fetch(url, {method:"PUT", headers:{"Authorization":"Bearer "+token, "Content-Type":"application/json"}, body: payload});
+    if(resp.ok){
+      document.getElementById("syncStatus").textContent = "Last synced: " + new Date().toLocaleTimeString();
+    }else if(manual){
+      alert("Sync failed (HTTP "+resp.status+").");
+    }
+  }catch(e){ if(manual) alert("Sync failed: "+e.message); }
+}
+async function pullFromOneDrive(){
+  const token = await getGraphToken();
+  if(!token) return;
+  const url = `https://graph.microsoft.com/v1.0/me/drive/special/approot:/${SYNC_FILE}:/content`;
+  try{
+    const resp = await fetch(url, {headers:{"Authorization":"Bearer "+token}});
+    if(resp.status===404) return; // nothing synced yet
+    if(!resp.ok) return;
+    const cloud = await resp.json();
+    const localTs = localStorage.getItem("lastLocalChange") || "1970-01-01T00:00:00Z";
+    if(cloud.lastSynced && cloud.lastSynced > localTs){
+      state = cloud;
+      saveState();
+      renderAll();
+    }
+  }catch(e){}
+}
+function updateSyncUI(connected){
+  document.getElementById("syncSetupBox").style.display = connected ? "none" : "block";
+  document.getElementById("syncConnectedBox").style.display = connected ? "block" : "none";
+  if(connected && syncAccount){
+    document.getElementById("syncAccountName").textContent = syncAccount.username;
+  }
+}
+async function checkSyncOnLoad(){
+  if(typeof msal==="undefined") return;
+  const clientId = localStorage.getItem("msalClientId");
+  if(!clientId) return;
+  if(!(await initMsal())) return;
+  try{
+    const redirectResp = await msalInstance.handleRedirectPromise();
+    if(redirectResp && redirectResp.account){ syncAccount = redirectResp.account; }
+  }catch(e){}
+  const accounts = msalInstance.getAllAccounts();
+  if(accounts.length>0){
+    syncAccount = accounts[0];
+    updateSyncUI(true);
+    await pullFromOneDrive();
+    await pushToOneDrive(false);
+  }
+}
+// Auto-sync a few seconds after any local change (debounced)
+const _origSaveState = saveState;
+saveState = function(){
+  _origSaveState();
+  localStorage.setItem("lastLocalChange", new Date().toISOString());
+  if(syncAccount){
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(()=>pushToOneDrive(false), 2500);
+  }
+};
+
+/* ---------------- Init ---------------- */
+function renderAll(){
+  document.getElementById("ratePill").textContent = "£"+state.rate.toFixed(2)+"/hr";
+  populateClientSelect();
+  renderTotalsBar();
+  renderLog();
+  renderSummary();
+  renderPay();
+  renderSettings();
+}
+renderAll();
+checkSyncOnLoad();
+
+// Hide install hint if already installed / previously dismissed
+if(window.matchMedia('(display-mode: standalone)').matches || localStorage.getItem("hideInstallHint")){
+  document.getElementById("installHint").style.display="none";
+}
+document.getElementById("installHint").addEventListener("click", ()=>{
+  localStorage.setItem("hideInstallHint","1");
+  document.getElementById("installHint").style.display="none";
+});
+</script>
+</body>
+</html>
