@@ -32,7 +32,7 @@
   *{box-sizing:border-box; -webkit-tap-highlight-color: transparent;}
   html,body{margin:0; padding:0; height:100%; background:var(--paper); color:var(--ink);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
-  body{padding-bottom:78px; overflow-x:hidden;}
+  body{padding-bottom:110px; overflow-x:hidden;}
 
   header.top{
     position:sticky; top:0; z-index:20;
@@ -49,7 +49,7 @@
     border-radius:999px; padding:6px 12px; font-size:12.5px; font-weight:600; white-space:nowrap;
   }
 
-  main{max-width:520px; margin:0 auto; padding:16px 14px 10px;}
+  main{max-width:520px; margin:0 auto; padding:16px 14px 120px;}
   .view{display:none;}
   .view.active{display:block; animation:fade .18s ease;}
   @keyframes fade{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:none;}}
@@ -105,7 +105,8 @@
   nav.tabs{
     position:fixed; bottom:0; left:0; right:0; z-index:30;
     background:#fff; border-top:1px solid var(--line);
-    display:flex; padding:6px 4px calc(6px + env(safe-area-inset-bottom));
+    display:flex; max-width:520px; margin:0 auto;
+    padding:6px 4px calc(6px + env(safe-area-inset-bottom));
     box-shadow:0 -2px 14px rgba(20,30,45,.06);
   }
   nav.tabs button{
