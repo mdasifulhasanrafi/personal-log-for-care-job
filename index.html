@@ -110,11 +110,13 @@
     box-shadow:0 -2px 14px rgba(20,30,45,.06);
   }
   nav.tabs button{
-    flex:1; background:none; border:none; padding:8px 2px 4px; font-size:10.5px;
-    color:var(--ink-soft); font-weight:600; display:flex; flex-direction:column; align-items:center; gap:3px;
+    flex:1; background:none; border:none; padding:6px 2px; font-size:10.5px;
+    color:var(--ink-soft); font-weight:600; display:flex; flex-direction:column; align-items:center; gap:2px;
+    border-radius:12px; margin:0 2px;
   }
-  nav.tabs button .ic{font-size:19px; line-height:1;}
-  nav.tabs button.active{color:var(--navy);}
+  nav.tabs button .ic{font-size:19px; line-height:1; padding:3px 14px; border-radius:10px; transition:background .15s;}
+  nav.tabs button.active{color:var(--navy); font-weight:800;}
+  nav.tabs button.active .ic{background:#e7edf3;}
 
   .fab{
     position:fixed; right:18px; bottom:82px; z-index:25;
@@ -636,7 +638,12 @@ function mondayOf(dateStr){
   return d;
 }
 function addDays(d,n){ const r=new Date(d); r.setDate(r.getDate()+n); return r; }
-function iso(d){ return d.toISOString().slice(0,10); }
+function iso(d){
+  const y = d.getFullYear();
+  const m = String(d.getMonth()+1).padStart(2,"0");
+  const day = String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
 function fmtShort(d){ return d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
 function fmtDow(dateStr){ return new Date(dateStr+"T00:00:00").toLocaleDateString('en-GB',{weekday:'short'}); }
 function fmtDom(dateStr){ return new Date(dateStr+"T00:00:00").getDate(); }
@@ -694,7 +701,7 @@ function allMonthKeys(){
   const set = new Set();
   state.visits.forEach(v=> set.add(v.date.slice(0,7)));
   state.payslips.forEach(p=> set.add(p.month));
-  if(set.size===0){ const now=new Date(); set.add(now.toISOString().slice(0,7)); }
+  if(set.size===0){ const now=new Date(); set.add(iso(now).slice(0,7)); }
   return Array.from(set).sort();
 }
 function monthlyStats(){
@@ -907,7 +914,7 @@ function exportExcel(){
   XLSX.utils.book_append_sheet(wb, ws4, "Edit History");
 
   const safeName = (state.profile && state.profile.appName ? state.profile.appName : "Care_Log").replace(/[^a-z0-9]+/gi, "_");
-  const fname = safeName + "_" + new Date().toISOString().slice(0,10) + ".xlsx";
+  const fname = safeName + "_" + iso(new Date()) + ".xlsx";
   XLSX.writeFile(wb, fname);
 }
 
@@ -957,7 +964,7 @@ function populateClientSelect(){
 function openAddVisit(){
   editingVisitId = null;
   document.getElementById("visitSheetTitle").textContent = "Add visit";
-  document.getElementById("vDate").value = new Date().toISOString().slice(0,10);
+  document.getElementById("vDate").value = iso(new Date());
   populateClientSelect();
   document.getElementById("vVisit").value = "Morning";
   document.getElementById("vStart").value = "";
