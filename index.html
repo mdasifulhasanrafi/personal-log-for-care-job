@@ -6,6 +6,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="theme-color" content="#1b3a5c">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <title id="pageTitle">Care Log</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.18.0/lib/msal-browser.min.js"></script>
@@ -195,6 +198,25 @@
   .pay-preview .grid .v{font-weight:600; text-align:right;}
   .pay-preview .grid .v.hl{color:var(--amber);}
 
+  .rota-day-head{
+    background:var(--teal); color:#fff; border-radius:10px; padding:9px 13px;
+    font-size:12.5px; font-weight:600; margin:14px 0 6px;
+  }
+  .rota-row{
+    display:flex; align-items:center; gap:10px;
+    background:var(--card); border:1px solid var(--line); border-radius:10px;
+    padding:10px 12px; margin-bottom:6px;
+  }
+  .rota-row .info{flex:1; min-width:0;}
+  .rota-row .client{font-weight:600; font-size:14.5px;}
+  .rota-row .meta{font-size:12px; color:var(--ink-soft); margin-top:1px;}
+  .rota-row .repeat-badge{display:inline-block; font-size:9.5px; font-weight:700; color:var(--teal);
+    background:#dff0ea; padding:1px 7px; border-radius:999px; margin-left:6px;}
+  .rota-row .actions{display:flex; gap:6px; flex-shrink:0;}
+  .rota-row .actions button{
+    background:none; border:none; font-size:16px; padding:4px;
+  }
+
   .hist-row{display:flex; gap:10px; padding:9px 0; border-top:1px solid var(--line); font-size:12.5px;}
   .hist-row:first-child{border-top:none;}
   .hist-row .ht{color:var(--ink-soft); flex-shrink:0; width:78px;}
@@ -288,6 +310,36 @@
       <h2>Monthly hours</h2>
       <table class="pay" id="monthlyHoursTable"></table>
     </div>
+  </section>
+
+  <!-- ROTA VIEW -->
+  <section class="view" id="view-rota">
+    <div class="card" id="notifyPromptCard" style="display:none;">
+      <h2>🔔 Shift reminders</h2>
+      <div style="font-size:12.5px; color:var(--ink-soft); margin-bottom:10px; line-height:1.5;">
+        Get a notification before each shift starts, while this app is open or recently open in the background. Not a guaranteed alarm — for anything critical, also set a backup alarm on your phone.
+      </div>
+      <button class="btn" onclick="enableNotifications()">Turn on reminders</button>
+    </div>
+    <div class="card" id="notifySettingsCard" style="display:none;">
+      <h2>🔔 Reminders are on</h2>
+      <div class="field">
+        <label>Single reminder — minutes before shift</label>
+        <input type="number" id="leadMinutesInput" min="1" max="180" onchange="saveLeadMinutes()">
+      </div>
+      <div style="font-size:12px; font-weight:700; color:var(--ink-soft); margin:14px 0 2px; text-transform:uppercase; letter-spacing:.4px;">Repeating wake-up alarms</div>
+      <div style="font-size:11.5px; color:var(--ink-soft); margin-bottom:8px; line-height:1.5;">
+        For shifts set to "Repeating" — e.g. start 90 min before, every 10 min, until 30 min before means an 8:00 shift alarms at 6:30, 6:40, 6:50 … 7:30.
+      </div>
+      <div class="row2">
+        <div class="field"><label>Start (min before)</label><input type="number" id="multiStartInput" min="5" max="360" onchange="saveMultiSettings()"></div>
+        <div class="field"><label>Every (min)</label><input type="number" id="multiIntervalInput" min="1" max="60" onchange="saveMultiSettings()"></div>
+      </div>
+      <div class="field"><label>Stop (min before shift)</label><input type="number" id="multiEndInput" min="0" max="180" onchange="saveMultiSettings()"></div>
+      <button class="btn secondary" onclick="testNotification()">Send a test notification</button>
+      <button class="btn danger" style="margin-top:8px;" onclick="disableNotifications()">Turn off all reminders</button>
+    </div>
+    <div id="rotaContainer"></div>
   </section>
 
   <!-- PAYSLIPS VIEW -->
@@ -394,6 +446,7 @@
 <nav class="tabs">
   <button class="tab-btn active" data-view="log"><span class="ic">📅</span>Log</button>
   <button class="tab-btn" data-view="summary"><span class="ic">📊</span>Summary</button>
+  <button class="tab-btn" data-view="rota"><span class="ic">🔔</span>Rota</button>
   <button class="tab-btn" data-view="pay"><span class="ic">💷</span>Payslips</button>
   <button class="tab-btn" data-view="settings"><span class="ic">⚙️</span>Settings</button>
 </nav>
@@ -422,6 +475,49 @@
     </div>
     <button class="btn" onclick="saveVisit()">Save visit</button>
     <button class="btn secondary" onclick="closeVisitSheet()">Cancel</button>
+  </div>
+</div>
+
+<!-- Add / Edit Rota Sheet -->
+<div class="overlay" id="rotaOverlay">
+  <div class="sheet">
+    <h3 id="rotaSheetTitle">Add shift</h3>
+    <div class="field">
+      <label>Client</label>
+      <select id="rClient"></select>
+    </div>
+    <div class="field">
+      <label>Repeats</label>
+      <select id="rRepeat" onchange="toggleRotaDateMode()">
+        <option value="once">One-off — pick a date</option>
+        <option value="weekly">Every week — pick a day</option>
+      </select>
+    </div>
+    <div class="field" id="rDateField">
+      <label>Date</label>
+      <input type="date" id="rDate">
+    </div>
+    <div class="field" id="rDowField" style="display:none;">
+      <label>Day of week</label>
+      <select id="rDow">
+        <option value="1">Monday</option><option value="2">Tuesday</option><option value="3">Wednesday</option>
+        <option value="4">Thursday</option><option value="5">Friday</option><option value="6">Saturday</option><option value="0">Sunday</option>
+      </select>
+    </div>
+    <div class="row2">
+      <div class="field"><label>Start time</label><input type="time" id="rStart"></div>
+      <div class="field"><label>End time</label><input type="time" id="rEnd"></div>
+    </div>
+    <div class="field">
+      <label>Alarm for this shift</label>
+      <select id="rAlarmMode">
+        <option value="single">Single reminder</option>
+        <option value="multi">Repeating wake-up alarms</option>
+        <option value="off">No alarm</option>
+      </select>
+    </div>
+    <button class="btn" onclick="saveRota()">Save shift</button>
+    <button class="btn secondary" onclick="closeRotaSheet()">Cancel</button>
   </div>
 </div>
 
@@ -583,7 +679,11 @@ const seedData = {
   visits: [],
   payslips: [],
   history: [],
-  profile: { appName: "Care Log", name: "", company: "" }
+  profile: { appName: "Care Log", name: "", company: "" },
+  rota: [],
+  notifySettings: { enabled: false, leadMinutes: 30, multiStart: 90, multiInterval: 10, multiEnd: 30 },
+  notifiedLog: {},
+  mutedOccurrences: {}
 };
 
 let state = loadState();
@@ -603,6 +703,13 @@ function loadState(){
       });
       if(!s.history) s.history = [];
       if(!s.profile) s.profile = { appName: "Care Log", name: "", company: "" };
+      if(!s.rota) s.rota = [];
+      if(!s.notifySettings) s.notifySettings = { enabled: false, leadMinutes: 30, multiStart: 90, multiInterval: 10, multiEnd: 30 };
+      if(s.notifySettings.multiStart==null) s.notifySettings.multiStart = 90;
+      if(s.notifySettings.multiInterval==null) s.notifySettings.multiInterval = 10;
+      if(s.notifySettings.multiEnd==null) s.notifySettings.multiEnd = 30;
+      if(!s.mutedOccurrences) s.mutedOccurrences = {};
+      if(!s.notifiedLog) s.notifiedLog = {};
       return s;
     }
   }catch(e){}
@@ -1074,7 +1181,16 @@ document.querySelectorAll(".tab-btn").forEach(btn=>{
     document.querySelectorAll(".view").forEach(v=>v.classList.remove("active"));
     btn.classList.add("active");
     document.getElementById("view-"+btn.dataset.view).classList.add("active");
-    document.getElementById("fabAdd").style.display = btn.dataset.view==="log" ? "flex" : "none";
+    const fab = document.getElementById("fabAdd");
+    if(btn.dataset.view==="log"){
+      fab.style.display = "flex";
+      fab.setAttribute("onclick","openAddVisit()");
+    }else if(btn.dataset.view==="rota"){
+      fab.style.display = "flex";
+      fab.setAttribute("onclick","openAddRota()");
+    }else{
+      fab.style.display = "none";
+    }
   };
 });
 
@@ -1202,6 +1318,235 @@ saveState = function(){
   }
 };
 
+/* ---------------- Job Rota ---------------- */
+let editingRotaId = null;
+function toggleRotaDateMode(){
+  const mode = document.getElementById("rRepeat").value;
+  document.getElementById("rDateField").style.display = mode==="once" ? "block" : "none";
+  document.getElementById("rDowField").style.display = mode==="weekly" ? "block" : "none";
+}
+function openAddRota(){
+  editingRotaId = null;
+  document.getElementById("rotaSheetTitle").textContent = "Add shift";
+  populateRotaClientSelect();
+  document.getElementById("rRepeat").value = "once";
+  document.getElementById("rDate").value = iso(new Date());
+  document.getElementById("rDow").value = "1";
+  document.getElementById("rStart").value = "";
+  document.getElementById("rEnd").value = "";
+  document.getElementById("rAlarmMode").value = "single";
+  toggleRotaDateMode();
+  document.getElementById("rotaOverlay").classList.add("show");
+}
+function editRota(id){
+  const r = state.rota.find(x=>x.id===id);
+  if(!r) return;
+  editingRotaId = id;
+  document.getElementById("rotaSheetTitle").textContent = "Edit shift";
+  populateRotaClientSelect();
+  document.getElementById("rClient").value = r.client;
+  document.getElementById("rRepeat").value = r.repeat;
+  document.getElementById("rDate").value = r.date || iso(new Date());
+  document.getElementById("rDow").value = r.dow!=null ? String(r.dow) : "1";
+  document.getElementById("rStart").value = r.start;
+  document.getElementById("rEnd").value = r.end;
+  document.getElementById("rAlarmMode").value = r.alarmMode || "single";
+  toggleRotaDateMode();
+  document.getElementById("rotaOverlay").classList.add("show");
+}
+function populateRotaClientSelect(){
+  const sel = document.getElementById("rClient");
+  sel.innerHTML = "";
+  state.clients.forEach(c=>{
+    const o = document.createElement("option"); o.value=c; o.textContent=c; sel.appendChild(o);
+  });
+}
+function closeRotaSheet(){ document.getElementById("rotaOverlay").classList.remove("show"); }
+function saveRota(){
+  const client = document.getElementById("rClient").value;
+  const repeat = document.getElementById("rRepeat").value;
+  const date = document.getElementById("rDate").value;
+  const dow = document.getElementById("rDow").value;
+  const start = document.getElementById("rStart").value;
+  const end = document.getElementById("rEnd").value;
+  const alarmMode = document.getElementById("rAlarmMode").value;
+  if(!start || !end){ alert("Please set a start and end time."); return; }
+  if(repeat==="once" && !date){ alert("Please pick a date."); return; }
+  const data = { client, repeat, date: repeat==="once"?date:null, dow: repeat==="weekly"?Number(dow):null, start, end, alarmMode };
+  if(editingRotaId){
+    Object.assign(state.rota.find(x=>x.id===editingRotaId), data);
+    logHistory("Edited rota shift", `${client} · ${repeat==="once"?date:"weekly"} · ${start}-${end}`);
+  }else{
+    state.rota.push({id:"r"+Date.now(), ...data});
+    logHistory("Added rota shift", `${client} · ${repeat==="once"?date:"weekly"} · ${start}-${end}`);
+  }
+  saveState();
+  closeRotaSheet();
+  renderAll();
+}
+function deleteRota(id){
+  if(!confirm("Delete this shift from the rota?")) return;
+  const r = state.rota.find(x=>x.id===id);
+  if(r) logHistory("Deleted rota shift", `${r.client} · ${r.repeat==="once"?r.date:"weekly"}`);
+  state.rota = state.rota.filter(x=>x.id!==id);
+  saveState();
+  renderAll();
+}
+function rotaOccurrences(daysAhead){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const occ = [];
+  for(let i=0;i<daysAhead;i++){
+    const d = addDays(today, i);
+    const dateStr = iso(d);
+    const dow = d.getDay();
+    state.rota.forEach(r=>{
+      if(r.repeat==="once" && r.date===dateStr){ occ.push(Object.assign({}, r, {occDate: dateStr})); }
+      else if(r.repeat==="weekly" && Number(r.dow)===dow){ occ.push(Object.assign({}, r, {occDate: dateStr})); }
+    });
+  }
+  occ.sort((a,b)=> (a.occDate+a.start).localeCompare(b.occDate+b.start));
+  return occ;
+}
+function toggleMuteOccurrence(id, occDate){
+  const key = id + "_" + occDate;
+  if(state.mutedOccurrences[key]){ delete state.mutedOccurrences[key]; }
+  else{ state.mutedOccurrences[key] = true; }
+  saveState();
+  renderRota();
+}
+function renderRota(){
+  const box = document.getElementById("rotaContainer");
+  const occs = rotaOccurrences(14);
+  if(occs.length===0){
+    box.innerHTML = '<div class="empty-note">No upcoming shifts on the rota. Tap + to add one.</div>';
+    return;
+  }
+  let html = "";
+  let lastDate = null;
+  occs.forEach(o=>{
+    if(o.occDate !== lastDate){
+      const d = new Date(o.occDate+"T00:00:00");
+      const label = d.toLocaleDateString('en-GB',{weekday:'long', day:'2-digit', month:'short'});
+      html += `<div class="rota-day-head">${label}</div>`;
+      lastDate = o.occDate;
+    }
+    const occKey = o.id + "_" + o.occDate;
+    const muted = !!state.mutedOccurrences[occKey];
+    const alarmBadge = o.alarmMode === "multi" ? '<span class="repeat-badge" style="color:var(--clay);background:#fbe9e0;">MULTI-ALARM</span>'
+                      : o.alarmMode === "off" ? '<span class="repeat-badge" style="color:#999;background:#eee;">NO ALARM</span>' : '';
+    html += `<div class="rota-row" style="${muted?'opacity:.55;':''}">
+      <div class="info">
+        <div class="client">${o.client||'(no client)'} ${o.repeat==='weekly'?'<span class="repeat-badge">WEEKLY</span>':''} ${alarmBadge}</div>
+        <div class="meta">${o.start}–${o.end} ${muted?'· muted for this date':''}</div>
+      </div>
+      <div class="actions">
+        <button onclick="toggleMuteOccurrence('${o.id}','${o.occDate}')" title="${muted?'Unmute':'Mute'} this date">${muted?'🔕':'🔔'}</button>
+        <button onclick="logShiftFromRota('${o.id}','${o.occDate}')" title="Log as worked">✅</button>
+        <button onclick="editRota('${o.id}')" title="Edit">✎</button>
+        <button onclick="deleteRota('${o.id}')" title="Delete">🗑</button>
+      </div>
+    </div>`;
+  });
+  box.innerHTML = html;
+}
+function logShiftFromRota(id, occDate){
+  const r = state.rota.find(x=>x.id===id);
+  if(!r) return;
+  editingVisitId = null;
+  document.getElementById("visitSheetTitle").textContent = "Log this shift";
+  document.getElementById("vDate").value = occDate;
+  populateClientSelect();
+  document.getElementById("vClient").value = r.client;
+  document.getElementById("vVisit").value = "Morning";
+  document.getElementById("vStart").value = r.start;
+  document.getElementById("vEnd").value = r.end;
+  document.getElementById("visitOverlay").classList.add("show");
+}
+
+/* ---------------- Notifications ---------------- */
+function updateNotifyUI(){
+  const granted = (typeof Notification !== "undefined") && Notification.permission === "granted" && state.notifySettings.enabled;
+  document.getElementById("notifyPromptCard").style.display = granted ? "none" : "block";
+  document.getElementById("notifySettingsCard").style.display = granted ? "block" : "none";
+  if(granted){
+    document.getElementById("leadMinutesInput").value = state.notifySettings.leadMinutes;
+    document.getElementById("multiStartInput").value = state.notifySettings.multiStart;
+    document.getElementById("multiIntervalInput").value = state.notifySettings.multiInterval;
+    document.getElementById("multiEndInput").value = state.notifySettings.multiEnd;
+  }
+}
+async function enableNotifications(){
+  if(typeof Notification === "undefined"){ alert("Notifications aren't supported in this browser."); return; }
+  const perm = await Notification.requestPermission();
+  if(perm !== "granted"){ alert("Notifications were blocked. You can allow them in your browser's site settings."); return; }
+  state.notifySettings.enabled = true;
+  saveState();
+  updateNotifyUI();
+}
+function saveLeadMinutes(){
+  const val = parseInt(document.getElementById("leadMinutesInput").value, 10);
+  if(!isNaN(val) && val > 0){ state.notifySettings.leadMinutes = val; saveState(); }
+}
+function saveMultiSettings(){
+  const start = parseInt(document.getElementById("multiStartInput").value, 10);
+  const interval = parseInt(document.getElementById("multiIntervalInput").value, 10);
+  const end = parseInt(document.getElementById("multiEndInput").value, 10);
+  if(!isNaN(start)) state.notifySettings.multiStart = start;
+  if(!isNaN(interval) && interval > 0) state.notifySettings.multiInterval = interval;
+  if(!isNaN(end)) state.notifySettings.multiEnd = end;
+  saveState();
+}
+function disableNotifications(){
+  if(!confirm("Turn off all shift reminders?")) return;
+  state.notifySettings.enabled = false;
+  saveState();
+  updateNotifyUI();
+}
+function fireNotification(title, body, tag){
+  if(navigator.serviceWorker && navigator.serviceWorker.controller){
+    navigator.serviceWorker.controller.postMessage({type:"SHOW_NOTIFICATION", title, body, tag});
+  }else if(typeof Notification !== "undefined"){
+    new Notification(title, {body, icon:"icons/icon-192.png"});
+  }
+}
+function testNotification(){
+  fireNotification("Test reminder", "This is what a shift reminder will look like.", "test");
+}
+function checkRotaNotifications(){
+  if(!state.notifySettings.enabled || typeof Notification==="undefined" || Notification.permission!=="granted") return;
+  const now = new Date();
+  const occs = rotaOccurrences(2);
+  occs.forEach(o=>{
+    const occKey = o.id + "_" + o.occDate;
+    if(state.mutedOccurrences[occKey]) return; // this specific occurrence is muted
+    const mode = o.alarmMode || "single";
+    if(mode === "off") return;
+    const startDt = new Date(o.occDate+"T"+o.start+":00");
+    const diffMin = (startDt - now) / 60000;
+
+    if(mode === "single"){
+      const lead = state.notifySettings.leadMinutes;
+      const key = occKey + "_s";
+      if(diffMin <= lead && diffMin > lead - 1 && !state.notifiedLog[key]){
+        fireNotification("Upcoming shift", `${o.client} at ${o.start} (in ${lead} min)`, key);
+        state.notifiedLog[key] = true;
+        saveState();
+      }
+    } else if(mode === "multi"){
+      const { multiStart, multiInterval, multiEnd } = state.notifySettings;
+      for(let t = multiStart; t >= multiEnd; t -= multiInterval){
+        const key = occKey + "_m" + t;
+        if(diffMin <= t && diffMin > t - 1 && !state.notifiedLog[key]){
+          fireNotification("Shift alarm", `${o.client} starts at ${o.start} (in ${t} min)`, key);
+          state.notifiedLog[key] = true;
+          saveState();
+        }
+      }
+    }
+  });
+}
+setInterval(checkRotaNotifications, 30000);
+
 /* ---------------- Init ---------------- */
 function renderAll(){
   document.getElementById("ratePill").textContent = "£"+state.rate.toFixed(2)+"/hr";
@@ -1212,10 +1557,18 @@ function renderAll(){
   renderSummary();
   renderPay();
   renderSettings();
+  renderRota();
+  updateNotifyUI();
 }
 renderAll();
 checkSyncOnLoad();
 initAuthGate();
+
+if("serviceWorker" in navigator){
+  window.addEventListener("load", ()=>{
+    navigator.serviceWorker.register("service-worker.js").catch(()=>{});
+  });
+}
 
 // Hide install hint if already installed / previously dismissed
 if(window.matchMedia('(display-mode: standalone)').matches || localStorage.getItem("hideInstallHint")){
