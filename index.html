@@ -561,11 +561,24 @@
 <script>
 /* ---------------- Firebase Cloud Auth + Database ---------------- */
 const FB_CONFIG_KEY = "careLogFirebaseConfig_v1";
+const BUILTIN_FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDoT6_g6LEy6HX-hrjszWux7Pb7TFePPfc",
+  authDomain: "care-log-1ba2b.firebaseapp.com",
+  projectId: "care-log-1ba2b",
+  storageBucket: "care-log-1ba2b.firebasestorage.app",
+  messagingSenderId: "800307061799",
+  appId: "1:800307061799:web:4c0f09b66e0ad5823a1a02",
+  measurementId: "G-5BLNRGL7BP"
+};
 let fbApp = null, fbAuth = null, fbDb = null, fbUser = null;
 let cloudSaveTimer = null;
 
 function getFirebaseConfig(){
-  try{ return JSON.parse(localStorage.getItem(FB_CONFIG_KEY)); }catch(e){ return null; }
+  try{
+    const stored = JSON.parse(localStorage.getItem(FB_CONFIG_KEY));
+    if(stored && stored.apiKey) return stored;
+  }catch(e){}
+  return BUILTIN_FIREBASE_CONFIG;
 }
 function initFirebase(){
   const cfg = getFirebaseConfig();
