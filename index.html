@@ -11,12 +11,9 @@
 <link rel="apple-touch-icon" href="icons/icon-192.png">
 <title id="pageTitle">Care Log</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@azure/msal-browser@3.18.0/lib/msal-browser.min.js"></script>
-<script>
-  if(typeof msal === "undefined"){
-    document.write('<scr'+'ipt src="https://unpkg.com/@azure/msal-browser@3.18.0/lib/msal-browser.min.js"><\/scr'+'ipt>');
-  }
-</script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
 <style>
   :root{
     --navy:#1b3a5c;
@@ -252,47 +249,49 @@
 
 <div id="authGate">
   <div class="auth-box">
-    <div id="authCreateForm">
+
+    <div id="fbSetupForm">
+      <h2>Connect to cloud database</h2>
+      <div class="auth-sub">One-time setup on this device. Paste the Firebase config from your project (Settings → General → Your apps → SDK setup and configuration) — see the guide for exact steps.</div>
+      <div class="field">
+        <label>Firebase config (paste the whole object)</label>
+        <textarea id="fbConfigInput" rows="6" style="width:100%; padding:11px 12px; border-radius:10px; border:1px solid var(--line); font-size:13px; font-family:monospace; background:#fbfaf8;" placeholder='{"apiKey": "...", "authDomain": "...", "projectId": "...", ...}'></textarea>
+      </div>
+      <div class="auth-error" id="fbSetupError"></div>
+      <button class="btn" onclick="saveFirebaseConfig()">Connect</button>
+    </div>
+
+    <div id="authCreateForm" style="display:none;">
       <h2>Create your account</h2>
-      <div class="auth-sub">This is your first time opening this app on this device — set a username and password to protect your data.</div>
-      <div class="field"><label>Username</label><input id="authNewUser" autocomplete="username"></div>
+      <div class="auth-sub">This account works from any phone or computer — your data syncs to the cloud.</div>
+      <div class="field"><label>Email</label><input id="authNewUser" type="email" autocomplete="username"></div>
       <div class="field"><label>Password</label><input id="authNewPass" type="password" autocomplete="new-password"></div>
       <div class="field"><label>Confirm password</label><input id="authNewPass2" type="password" autocomplete="new-password"></div>
       <div class="auth-error" id="authCreateError"></div>
       <button class="btn" onclick="createAccount()">Create account</button>
+      <div class="auth-switch"><a onclick="showLoginForm()">Already have an account? Log in</a></div>
     </div>
+
     <div id="authLoginForm" style="display:none;">
       <h2>Welcome back</h2>
-      <div class="auth-sub" id="authLoginSub">Log in to continue</div>
+      <div class="auth-sub">Log in to sync your data on this device.</div>
+      <div class="field"><label>Email</label><input id="authLoginUser" type="email" autocomplete="username"></div>
       <div class="field"><label>Password</label><input id="authLoginPass" type="password" autocomplete="current-password"></div>
-      <label class="remember"><input type="checkbox" id="authRemember" checked> Keep me logged in on this device</label>
       <div class="auth-error" id="authLoginError"></div>
       <button class="btn" onclick="loginAccount()">Log in</button>
       <div class="auth-switch"><a onclick="showResetPassForm()">Forgot password?</a></div>
-    </div>
-
-    <div id="authShowCodeForm" style="display:none;">
-      <h2>Save your recovery code</h2>
-      <div class="auth-sub">If you ever forget your password, this code is the only way back in <b>without losing your data</b>. Write it down or take a screenshot now — it won't be shown again.</div>
-      <div style="background:#f6f3ee; border:1.5px dashed var(--navy); border-radius:12px; padding:16px; text-align:center; margin-bottom:16px;">
-        <div style="font-family:monospace; font-size:20px; font-weight:700; letter-spacing:1.5px; color:var(--navy);" id="recoveryCodeDisplay"></div>
-      </div>
-      <label class="remember"><input type="checkbox" id="authCodeSavedCheck"> I've saved this code somewhere safe</label>
-      <div class="auth-error" id="authCodeError"></div>
-      <button class="btn" onclick="confirmCodeSaved()">Continue to app</button>
+      <div class="auth-switch"><a onclick="showCreateForm()">Need an account? Create one</a></div>
     </div>
 
     <div id="authResetForm" style="display:none;">
       <h2>Reset your password</h2>
-      <div class="auth-sub">Enter your recovery code to set a new password. Your data stays exactly as it is.</div>
-      <div class="field"><label>Recovery code</label><input id="resetCode" placeholder="XXXX-XXXX-XXXX" autocomplete="off"></div>
-      <div class="field"><label>New password</label><input id="resetNewPass" type="password" autocomplete="new-password"></div>
-      <div class="field"><label>Confirm new password</label><input id="resetNewPass2" type="password" autocomplete="new-password"></div>
+      <div class="auth-sub">We'll email you a link to set a new password. Your data isn't touched.</div>
+      <div class="field"><label>Email</label><input id="resetEmail" type="email" autocomplete="username"></div>
       <div class="auth-error" id="authResetError"></div>
-      <button class="btn" onclick="resetPasswordWithCode()">Reset password</button>
+      <button class="btn" onclick="sendResetEmail()">Send reset email</button>
       <button class="btn secondary" style="margin-top:8px;" onclick="showLoginForm()">Back to login</button>
-      <div class="auth-switch"><a onclick="showResetConfirm()">Don't have your recovery code? Wipe this device instead</a></div>
     </div>
+
   </div>
 </div>
 
@@ -386,19 +385,9 @@
         <button class="btn secondary" style="margin-top:8px;" onclick="toggleChangePass(false)">Cancel</button>
       </div>
 
-      <div id="regenCodeBox" style="display:none; margin-top:6px;">
-        <div class="field"><label>Confirm your current password</label><input type="password" id="rgOldPass" autocomplete="current-password"></div>
-        <div class="auth-error" id="rgError"></div>
-        <div id="rgCodeReveal" style="display:none; background:#f6f3ee; border:1.5px dashed var(--navy); border-radius:12px; padding:14px; text-align:center; margin-bottom:12px; font-family:monospace; font-size:17px; font-weight:700; letter-spacing:1px; color:var(--navy);"></div>
-        <button class="btn" onclick="regenerateRecoveryCode()">Generate new recovery code</button>
-        <button class="btn secondary" style="margin-top:8px;" onclick="toggleRegenBox(false)">Close</button>
-      </div>
-
       <div id="acctButtons">
         <button class="btn secondary" onclick="toggleChangePass(true)">Change password</button>
-        <button class="btn secondary" style="margin-top:8px;" onclick="toggleRegenBox(true)">Get a new recovery code</button>
         <button class="btn secondary" style="margin-top:8px;" onclick="logoutAccount()">Log out</button>
-        <button class="btn danger" style="margin-top:8px;" onclick="showResetConfirm()">Reset account &amp; wipe data</button>
       </div>
     </div>
     <div class="card">
@@ -419,22 +408,6 @@
         This stays on your device only — it's never written into the app's public source code.
       </div>
       <button class="btn" onclick="saveProfile()">Save profile</button>
-    </div>
-    <div class="card">
-      <h2>☁️ OneDrive live sync</h2>
-      <div id="syncSetupBox">
-        <div class="field">
-          <label>Azure App Client ID</label>
-          <input id="msalClientIdInput" placeholder="Paste your Client ID here">
-        </div>
-        <button class="btn" onclick="signInOneDrive()">Connect to OneDrive</button>
-      </div>
-      <div id="syncConnectedBox" style="display:none;">
-        <div style="font-size:13px; margin-bottom:4px;">Signed in as <b id="syncAccountName"></b></div>
-        <div style="font-size:12px; color:var(--ink-soft); margin-bottom:10px;" id="syncStatus">Not synced yet</div>
-        <button class="btn" onclick="pushToOneDrive(true)">Sync now</button>
-        <button class="btn secondary" style="margin-top:8px;" onclick="signOutOneDrive()">Disconnect</button>
-      </div>
     </div>
     <div class="card">
       <h2>Hourly rate</h2>
@@ -586,102 +559,168 @@
 </div>
 
 <script>
-/* ---------------- Auth ---------------- */
-const ACCOUNT_KEY = "careLogAccount_v1";
-const SESSION_KEY = "careLogSession_v1"; // persistent (remember me)
-const SESSION_TEMP_KEY = "careLogSessionTemp_v1"; // per-tab only (sessionStorage)
+/* ---------------- Firebase Cloud Auth + Database ---------------- */
+const FB_CONFIG_KEY = "careLogFirebaseConfig_v1";
+let fbApp = null, fbAuth = null, fbDb = null, fbUser = null;
+let cloudSaveTimer = null;
 
-async function sha256Hex(text){
-  const enc = new TextEncoder().encode(text);
-  const buf = await crypto.subtle.digest("SHA-256", enc);
-  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+function getFirebaseConfig(){
+  try{ return JSON.parse(localStorage.getItem(FB_CONFIG_KEY)); }catch(e){ return null; }
 }
-function randomSalt(){
-  const arr = new Uint8Array(16);
-  crypto.getRandomValues(arr);
-  return Array.from(arr).map(b=>b.toString(16).padStart(2,"0")).join("");
+function initFirebase(){
+  const cfg = getFirebaseConfig();
+  if(!cfg) return false;
+  if(!fbApp){
+    try{
+      fbApp = firebase.initializeApp(cfg);
+      fbAuth = firebase.auth();
+      fbDb = firebase.firestore();
+    }catch(e){ return false; }
+  }
+  return true;
 }
-function getAccount(){
-  try{ return JSON.parse(localStorage.getItem(ACCOUNT_KEY)); }catch(e){ return null; }
+function saveFirebaseConfig(){
+  const raw = document.getElementById("fbConfigInput").value.trim();
+  const err = document.getElementById("fbSetupError");
+  err.textContent = "";
+  let cfg;
+  try{ cfg = JSON.parse(raw); }catch(e){ err.textContent = "That doesn't look like valid config — copy the whole {...} object from Firebase."; return; }
+  if(!cfg.apiKey || !cfg.projectId){ err.textContent = "Missing apiKey or projectId — copy the full config object."; return; }
+  localStorage.setItem(FB_CONFIG_KEY, JSON.stringify(cfg));
+  if(!initFirebase()){ err.textContent = "Couldn't connect. Check the config and your internet connection."; return; }
+  document.getElementById("fbSetupForm").style.display = "none";
+  document.getElementById("authLoginForm").style.display = "block";
+  registerAuthListener();
 }
-function hasActiveSession(){
-  return !!(localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_TEMP_KEY));
-}
-function randomRecoveryCode(){
-  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L ambiguity
-  const arr = new Uint8Array(12);
-  crypto.getRandomValues(arr);
-  let raw = Array.from(arr).map(b => alphabet[b % alphabet.length]).join("");
-  return raw.match(/.{1,4}/g).join("-"); // XXXX-XXXX-XXXX
-}
+
 async function createAccount(){
-  const user = document.getElementById("authNewUser").value.trim();
+  const email = document.getElementById("authNewUser").value.trim();
   const pass = document.getElementById("authNewPass").value;
   const pass2 = document.getElementById("authNewPass2").value;
   const err = document.getElementById("authCreateError");
   err.textContent = "";
-  if(!user){ err.textContent = "Please enter a username."; return; }
-  if(pass.length < 4){ err.textContent = "Password must be at least 4 characters."; return; }
+  if(!email){ err.textContent = "Please enter an email."; return; }
+  if(pass.length < 6){ err.textContent = "Password must be at least 6 characters."; return; }
   if(pass !== pass2){ err.textContent = "Passwords don't match."; return; }
-  const salt = randomSalt();
-  const hash = await sha256Hex(salt + pass);
-  const recoveryCode = randomRecoveryCode();
-  const recoverySalt = randomSalt();
-  const recoveryHash = await sha256Hex(recoverySalt + recoveryCode);
-  localStorage.setItem(ACCOUNT_KEY, JSON.stringify({username:user, salt, hash, recoverySalt, recoveryHash}));
-  localStorage.setItem(SESSION_KEY, "1");
-  document.getElementById("authCreateForm").style.display = "none";
-  document.getElementById("recoveryCodeDisplay").textContent = recoveryCode;
-  document.getElementById("authCodeSavedCheck").checked = false;
-  document.getElementById("authCodeError").textContent = "";
-  document.getElementById("authShowCodeForm").style.display = "block";
-}
-function confirmCodeSaved(){
-  if(!document.getElementById("authCodeSavedCheck").checked){
-    document.getElementById("authCodeError").textContent = "Please confirm you've saved the code before continuing.";
-    return;
+  try{
+    await fbAuth.createUserWithEmailAndPassword(email, pass);
+    // onAuthStateChanged will handle entering the app
+  }catch(e){
+    err.textContent = friendlyAuthError(e);
   }
-  const acct = getAccount();
-  enterApp(acct.username);
 }
 async function loginAccount(){
-  const acct = getAccount();
+  const email = document.getElementById("authLoginUser").value.trim();
   const pass = document.getElementById("authLoginPass").value;
-  const remember = document.getElementById("authRemember").checked;
   const err = document.getElementById("authLoginError");
   err.textContent = "";
-  if(!pass){ err.textContent = "Please enter your password."; return; }
-  const hash = await sha256Hex(acct.salt + pass);
-  if(hash !== acct.hash){ err.textContent = "Incorrect password."; return; }
-  if(remember){ localStorage.setItem(SESSION_KEY, "1"); }
-  else { sessionStorage.setItem(SESSION_TEMP_KEY, "1"); }
-  enterApp(acct.username);
+  if(!email || !pass){ err.textContent = "Please enter your email and password."; return; }
+  try{
+    await fbAuth.signInWithEmailAndPassword(email, pass);
+  }catch(e){
+    err.textContent = friendlyAuthError(e);
+  }
 }
-function toggleRegenBox(show){
-  document.getElementById("regenCodeBox").style.display = show ? "block" : "none";
-  document.getElementById("acctButtons").style.display = show ? "none" : "block";
-  document.getElementById("rgOldPass").value = "";
-  document.getElementById("rgError").textContent = "";
-  document.getElementById("rgCodeReveal").style.display = "none";
-}
-async function regenerateRecoveryCode(){
-  const acct = getAccount();
-  const oldPass = document.getElementById("rgOldPass").value;
-  const err = document.getElementById("rgError");
+async function sendResetEmail(){
+  const email = document.getElementById("resetEmail").value.trim();
+  const err = document.getElementById("authResetError");
   err.textContent = "";
-  const oldHash = await sha256Hex(acct.salt + oldPass);
-  if(oldHash !== acct.hash){ err.textContent = "Password is incorrect."; return; }
-  const newCode = randomRecoveryCode();
-  const newSalt = randomSalt();
-  acct.recoverySalt = newSalt;
-  acct.recoveryHash = await sha256Hex(newSalt + newCode);
-  localStorage.setItem(ACCOUNT_KEY, JSON.stringify(acct));
-  logHistory("Regenerated recovery code", "");
-  const box = document.getElementById("rgCodeReveal");
-  box.textContent = newCode;
-  box.style.display = "block";
-  document.getElementById("rgOldPass").value = "";
+  if(!email){ err.textContent = "Please enter your email."; return; }
+  try{
+    await fbAuth.sendPasswordResetEmail(email);
+    alert("Reset email sent — check your inbox (and spam folder) for a link from Firebase.");
+    showLoginForm();
+  }catch(e){
+    err.textContent = friendlyAuthError(e);
+  }
 }
+function logoutAccount(){
+  fbAuth.signOut();
+}
+function friendlyAuthError(e){
+  const map = {
+    "auth/email-already-in-use": "An account already exists with that email — try logging in instead.",
+    "auth/invalid-email": "That email address doesn't look right.",
+    "auth/weak-password": "Password must be at least 6 characters.",
+    "auth/user-not-found": "No account found with that email.",
+    "auth/wrong-password": "Incorrect password.",
+    "auth/invalid-credential": "Incorrect email or password.",
+    "auth/too-many-requests": "Too many attempts — please wait a moment and try again."
+  };
+  return map[e.code] || (e.message || "Something went wrong.");
+}
+function showCreateForm(){
+  document.getElementById("authLoginForm").style.display = "none";
+  document.getElementById("authResetForm").style.display = "none";
+  document.getElementById("authCreateForm").style.display = "block";
+}
+function showLoginForm(){
+  document.getElementById("authCreateForm").style.display = "none";
+  document.getElementById("authResetForm").style.display = "none";
+  document.getElementById("authLoginForm").style.display = "block";
+}
+function showResetPassForm(){
+  document.getElementById("authLoginForm").style.display = "none";
+  document.getElementById("authResetForm").style.display = "block";
+  document.getElementById("resetEmail").value = "";
+  document.getElementById("authResetError").textContent = "";
+}
+
+function enterApp(email){
+  document.getElementById("authGate").classList.add("hidden");
+  const el = document.getElementById("acctUsername");
+  if(el) el.textContent = email;
+}
+
+async function loadStateFromCloud(uid){
+  try{
+    const doc = await fbDb.collection("users").doc(uid).get();
+    if(doc.exists){
+      const cloud = doc.data();
+      state = Object.assign(JSON.parse(JSON.stringify(seedData)), cloud);
+      saveLocalCache();
+    }else{
+      // first login for this account — push current local/seed state up as the initial cloud copy
+      await fbDb.collection("users").doc(uid).set(JSON.parse(JSON.stringify(state)));
+    }
+  }catch(e){
+    console.error("Cloud load failed, using local cache", e);
+  }
+  renderAll();
+}
+function pushStateToCloud(){
+  if(!fbUser || !fbDb) return;
+  clearTimeout(cloudSaveTimer);
+  cloudSaveTimer = setTimeout(()=>{
+    fbDb.collection("users").doc(fbUser.uid).set(JSON.parse(JSON.stringify(state))).catch(e=>console.error("Cloud save failed", e));
+  }, 1200);
+}
+
+function registerAuthListener(){
+  fbAuth.onAuthStateChanged(async (user)=>{
+    if(user){
+      fbUser = user;
+      await loadStateFromCloud(user.uid);
+      enterApp(user.email);
+    }else{
+      fbUser = null;
+      document.getElementById("authGate").classList.remove("hidden");
+      document.getElementById("authCreateForm").style.display = "none";
+      document.getElementById("authResetForm").style.display = "none";
+      document.getElementById("authLoginForm").style.display = "block";
+    }
+  });
+}
+function initAuthGate(){
+  if(!initFirebase()){
+    document.getElementById("fbSetupForm").style.display = "block";
+    return;
+  }
+  document.getElementById("fbSetupForm").style.display = "none";
+  document.getElementById("authLoginForm").style.display = "block";
+  registerAuthListener();
+}
+// Allow Enter key to submit auth forms
 function toggleChangePass(show){
   document.getElementById("changePassBox").style.display = show ? "block" : "none";
   document.getElementById("acctButtons").style.display = show ? "none" : "block";
@@ -691,97 +730,30 @@ function toggleChangePass(show){
   document.getElementById("cpError").textContent = "";
 }
 async function changePassword(){
-  const acct = getAccount();
   const oldPass = document.getElementById("cpOld").value;
   const newPass = document.getElementById("cpNew").value;
   const newPass2 = document.getElementById("cpNew2").value;
   const err = document.getElementById("cpError");
   err.textContent = "";
-  const oldHash = await sha256Hex(acct.salt + oldPass);
-  if(oldHash !== acct.hash){ err.textContent = "Current password is incorrect."; return; }
-  if(newPass.length < 4){ err.textContent = "New password must be at least 4 characters."; return; }
+  if(newPass.length < 6){ err.textContent = "New password must be at least 6 characters."; return; }
   if(newPass !== newPass2){ err.textContent = "New passwords don't match."; return; }
-  const newSalt = randomSalt();
-  const newHash = await sha256Hex(newSalt + newPass);
-  localStorage.setItem(ACCOUNT_KEY, JSON.stringify({username: acct.username, salt: newSalt, hash: newHash}));
-  toggleChangePass(false);
-  alert("Password changed successfully.");
-}
-function logoutAccount(){
-  localStorage.removeItem(SESSION_KEY);
-  sessionStorage.removeItem(SESSION_TEMP_KEY);
-  location.reload();
-}
-function showResetPassForm(){
-  document.getElementById("authLoginForm").style.display = "none";
-  document.getElementById("authResetForm").style.display = "block";
-  document.getElementById("resetCode").value = "";
-  document.getElementById("resetNewPass").value = "";
-  document.getElementById("resetNewPass2").value = "";
-  document.getElementById("authResetError").textContent = "";
-}
-function showLoginForm(){
-  document.getElementById("authResetForm").style.display = "none";
-  document.getElementById("authLoginForm").style.display = "block";
-}
-async function resetPasswordWithCode(){
-  const acct = getAccount();
-  const code = document.getElementById("resetCode").value.trim().toUpperCase();
-  const newPass = document.getElementById("resetNewPass").value;
-  const newPass2 = document.getElementById("resetNewPass2").value;
-  const err = document.getElementById("authResetError");
-  err.textContent = "";
-  if(!code){ err.textContent = "Please enter your recovery code."; return; }
-  if(!acct.recoveryHash){ err.textContent = "No recovery code was set up for this account. Use the wipe option below."; return; }
-  const codeHash = await sha256Hex(acct.recoverySalt + code);
-  if(codeHash !== acct.recoveryHash){ err.textContent = "That recovery code doesn't match."; return; }
-  if(newPass.length < 4){ err.textContent = "New password must be at least 4 characters."; return; }
-  if(newPass !== newPass2){ err.textContent = "New passwords don't match."; return; }
-  const newSalt = randomSalt();
-  const newHash = await sha256Hex(newSalt + newPass);
-  acct.salt = newSalt;
-  acct.hash = newHash;
-  localStorage.setItem(ACCOUNT_KEY, JSON.stringify(acct));
-  localStorage.setItem(SESSION_KEY, "1");
-  document.getElementById("authResetForm").style.display = "none";
-  alert("Password reset. All your data is exactly as you left it.");
-  enterApp(acct.username);
-}
-function showResetConfirm(){
-  if(!confirm("This will permanently delete the account AND all data on this device (visits, payslips, history, settings). This cannot be undone. Continue?")) return;
-  localStorage.removeItem(ACCOUNT_KEY);
-  localStorage.removeItem(SESSION_KEY);
-  sessionStorage.removeItem(SESSION_TEMP_KEY);
-  localStorage.removeItem(STORAGE_KEY);
-  location.reload();
-}
-function enterApp(username){
-  document.getElementById("authGate").classList.add("hidden");
-  document.getElementById("acctUsername").textContent = username;
-}
-function initAuthGate(){
-  const acct = getAccount();
-  if(!acct){
-    document.getElementById("authCreateForm").style.display = "block";
-    document.getElementById("authLoginForm").style.display = "none";
-    return;
+  try{
+    const cred = firebase.auth.EmailAuthProvider.credential(fbUser.email, oldPass);
+    await fbUser.reauthenticateWithCredential(cred);
+    await fbUser.updatePassword(newPass);
+    toggleChangePass(false);
+    alert("Password changed successfully.");
+  }catch(e){
+    err.textContent = friendlyAuthError(e);
   }
-  if(hasActiveSession()){
-    enterApp(acct.username);
-    return;
-  }
-  document.getElementById("authCreateForm").style.display = "none";
-  document.getElementById("authLoginForm").style.display = "block";
-  document.getElementById("authLoginSub").textContent = "Log in as " + acct.username;
 }
-// Allow Enter key to submit auth forms
+
 document.addEventListener("keydown", function(e){
   if(e.key !== "Enter") return;
-  if(document.getElementById("authCreateForm").style.display !== "none"){
-    if(["authNewUser","authNewPass","authNewPass2"].includes(document.activeElement.id)) createAccount();
-  } else if(document.getElementById("authLoginForm").style.display !== "none"){
-    if(document.activeElement.id === "authLoginPass") loginAccount();
-  }
+  const a = document.activeElement.id;
+  if(["authNewUser","authNewPass","authNewPass2"].includes(a)) createAccount();
+  else if(["authLoginUser","authLoginPass"].includes(a)) loginAccount();
+  else if(a === "resetEmail") sendResetEmail();
 });
 
 /* ---------------- Data model ---------------- */
@@ -829,8 +801,12 @@ function loadState(){
   }catch(e){}
   return JSON.parse(JSON.stringify(seedData));
 }
-function saveState(){
+function saveLocalCache(){
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+function saveState(){
+  saveLocalCache();
+  pushStateToCloud();
 }
 function logHistory(action, detail){
   state.history.unshift({ts:new Date().toISOString(), action, detail});
@@ -1308,130 +1284,6 @@ document.querySelectorAll(".tab-btn").forEach(btn=>{
   };
 });
 
-/* ---------------- OneDrive Live Sync ---------------- */
-const SYNC_FILE = "rafi-care-log-data.json";
-let msalInstance = null;
-let syncAccount = null;
-let pushTimer = null;
-
-function msalConfig(clientId){
-  return {
-    auth: {
-      clientId: clientId,
-      authority: "https://login.microsoftonline.com/consumers",
-      redirectUri: window.location.origin + window.location.pathname
-    },
-    cache: { cacheLocation: "localStorage" }
-  };
-}
-async function initMsal(){
-  const clientId = localStorage.getItem("msalClientId");
-  if(!clientId || typeof msal==="undefined") return false;
-  if(!msalInstance){
-    msalInstance = new msal.PublicClientApplication(msalConfig(clientId));
-    await msalInstance.initialize();
-  }
-  return true;
-}
-async function signInOneDrive(){
-  const clientId = document.getElementById("msalClientIdInput").value.trim();
-  if(!clientId){ alert("Paste your Azure app Client ID first — see setup instructions."); return; }
-  localStorage.setItem("msalClientId", clientId);
-  if(!(await initMsal())){ alert("Could not load sign-in library. Check your internet connection."); return; }
-  try{
-    await msalInstance.loginRedirect({scopes:["Files.ReadWrite.AppFolder"]});
-  }catch(e){
-    alert("Sign-in failed: " + e.message);
-  }
-}
-function signOutOneDrive(){
-  localStorage.removeItem("msalClientId");
-  if(msalInstance){
-    const acc = msalInstance.getAllAccounts()[0];
-    if(acc) msalInstance.logoutRedirect({account:acc});
-  }
-  syncAccount = null;
-  updateSyncUI(false);
-}
-async function getGraphToken(){
-  if(!(await initMsal())) return null;
-  const accounts = msalInstance.getAllAccounts();
-  if(accounts.length===0) return null;
-  syncAccount = accounts[0];
-  try{
-    const resp = await msalInstance.acquireTokenSilent({scopes:["Files.ReadWrite.AppFolder"], account: syncAccount});
-    return resp.accessToken;
-  }catch(e){
-    await msalInstance.acquireTokenRedirect({scopes:["Files.ReadWrite.AppFolder"]});
-    return null;
-  }
-}
-async function pushToOneDrive(manual){
-  const token = await getGraphToken();
-  if(!token){ if(manual) alert("Not signed in to OneDrive yet."); return; }
-  const payload = JSON.stringify(Object.assign({}, state, {lastSynced: new Date().toISOString()}));
-  const url = `https://graph.microsoft.com/v1.0/me/drive/special/approot:/${SYNC_FILE}:/content`;
-  try{
-    const resp = await fetch(url, {method:"PUT", headers:{"Authorization":"Bearer "+token, "Content-Type":"application/json"}, body: payload});
-    if(resp.ok){
-      document.getElementById("syncStatus").textContent = "Last synced: " + new Date().toLocaleTimeString();
-    }else if(manual){
-      alert("Sync failed (HTTP "+resp.status+").");
-    }
-  }catch(e){ if(manual) alert("Sync failed: "+e.message); }
-}
-async function pullFromOneDrive(){
-  const token = await getGraphToken();
-  if(!token) return;
-  const url = `https://graph.microsoft.com/v1.0/me/drive/special/approot:/${SYNC_FILE}:/content`;
-  try{
-    const resp = await fetch(url, {headers:{"Authorization":"Bearer "+token}});
-    if(resp.status===404) return; // nothing synced yet
-    if(!resp.ok) return;
-    const cloud = await resp.json();
-    const localTs = localStorage.getItem("lastLocalChange") || "1970-01-01T00:00:00Z";
-    if(cloud.lastSynced && cloud.lastSynced > localTs){
-      state = cloud;
-      saveState();
-      renderAll();
-    }
-  }catch(e){}
-}
-function updateSyncUI(connected){
-  document.getElementById("syncSetupBox").style.display = connected ? "none" : "block";
-  document.getElementById("syncConnectedBox").style.display = connected ? "block" : "none";
-  if(connected && syncAccount){
-    document.getElementById("syncAccountName").textContent = syncAccount.username;
-  }
-}
-async function checkSyncOnLoad(){
-  if(typeof msal==="undefined") return;
-  const clientId = localStorage.getItem("msalClientId");
-  if(!clientId) return;
-  if(!(await initMsal())) return;
-  try{
-    const redirectResp = await msalInstance.handleRedirectPromise();
-    if(redirectResp && redirectResp.account){ syncAccount = redirectResp.account; }
-  }catch(e){}
-  const accounts = msalInstance.getAllAccounts();
-  if(accounts.length>0){
-    syncAccount = accounts[0];
-    updateSyncUI(true);
-    await pullFromOneDrive();
-    await pushToOneDrive(false);
-  }
-}
-// Auto-sync a few seconds after any local change (debounced)
-const _origSaveState = saveState;
-saveState = function(){
-  _origSaveState();
-  localStorage.setItem("lastLocalChange", new Date().toISOString());
-  if(syncAccount){
-    clearTimeout(pushTimer);
-    pushTimer = setTimeout(()=>pushToOneDrive(false), 2500);
-  }
-};
-
 /* ---------------- Job Rota ---------------- */
 let editingRotaId = null;
 function toggleRotaDateMode(){
@@ -1675,7 +1527,6 @@ function renderAll(){
   updateNotifyUI();
 }
 renderAll();
-checkSyncOnLoad();
 initAuthGate();
 
 if("serviceWorker" in navigator){
