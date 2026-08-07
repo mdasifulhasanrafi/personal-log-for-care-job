@@ -579,12 +579,26 @@ function initFirebase(){
   }
   return true;
 }
+function parseFirebaseConfigInput(raw){
+  // Try strict JSON first
+  try{ return JSON.parse(raw); }catch(e){}
+  // Firebase's console shows a JS object literal (unquoted keys, possibly
+  // prefixed with "const firebaseConfig = " and a trailing ";") — handle that too.
+  try{
+    let cleaned = raw
+      .replace(/^\s*(const|let|var)\s+\w+\s*=\s*/, "")  // strip "const firebaseConfig ="
+      .replace(/;\s*$/, "");                              // strip trailing semicolon
+    const obj = new Function("return (" + cleaned + ")")();
+    if(obj && typeof obj === "object") return obj;
+  }catch(e){}
+  return null;
+}
 function saveFirebaseConfig(){
   const raw = document.getElementById("fbConfigInput").value.trim();
   const err = document.getElementById("fbSetupError");
   err.textContent = "";
-  let cfg;
-  try{ cfg = JSON.parse(raw); }catch(e){ err.textContent = "That doesn't look like valid config — copy the whole {...} object from Firebase."; return; }
+  const cfg = parseFirebaseConfigInput(raw);
+  if(!cfg){ err.textContent = "That doesn't look like valid config — copy the whole {...} object from Firebase."; return; }
   if(!cfg.apiKey || !cfg.projectId){ err.textContent = "Missing apiKey or projectId — copy the full config object."; return; }
   localStorage.setItem(FB_CONFIG_KEY, JSON.stringify(cfg));
   if(!initFirebase()){ err.textContent = "Couldn't connect. Check the config and your internet connection."; return; }
