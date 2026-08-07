@@ -268,7 +268,30 @@
       <label class="remember"><input type="checkbox" id="authRemember" checked> Keep me logged in on this device</label>
       <div class="auth-error" id="authLoginError"></div>
       <button class="btn" onclick="loginAccount()">Log in</button>
-      <div class="auth-switch"><a onclick="showResetConfirm()">Forgot password? Reset this device</a></div>
+      <div class="auth-switch"><a onclick="showResetPassForm()">Forgot password?</a></div>
+    </div>
+
+    <div id="authShowCodeForm" style="display:none;">
+      <h2>Save your recovery code</h2>
+      <div class="auth-sub">If you ever forget your password, this code is the only way back in <b>without losing your data</b>. Write it down or take a screenshot now — it won't be shown again.</div>
+      <div style="background:#f6f3ee; border:1.5px dashed var(--navy); border-radius:12px; padding:16px; text-align:center; margin-bottom:16px;">
+        <div style="font-family:monospace; font-size:20px; font-weight:700; letter-spacing:1.5px; color:var(--navy);" id="recoveryCodeDisplay"></div>
+      </div>
+      <label class="remember"><input type="checkbox" id="authCodeSavedCheck"> I've saved this code somewhere safe</label>
+      <div class="auth-error" id="authCodeError"></div>
+      <button class="btn" onclick="confirmCodeSaved()">Continue to app</button>
+    </div>
+
+    <div id="authResetForm" style="display:none;">
+      <h2>Reset your password</h2>
+      <div class="auth-sub">Enter your recovery code to set a new password. Your data stays exactly as it is.</div>
+      <div class="field"><label>Recovery code</label><input id="resetCode" placeholder="XXXX-XXXX-XXXX" autocomplete="off"></div>
+      <div class="field"><label>New password</label><input id="resetNewPass" type="password" autocomplete="new-password"></div>
+      <div class="field"><label>Confirm new password</label><input id="resetNewPass2" type="password" autocomplete="new-password"></div>
+      <div class="auth-error" id="authResetError"></div>
+      <button class="btn" onclick="resetPasswordWithCode()">Reset password</button>
+      <button class="btn secondary" style="margin-top:8px;" onclick="showLoginForm()">Back to login</button>
+      <div class="auth-switch"><a onclick="showResetConfirm()">Don't have your recovery code? Wipe this device instead</a></div>
     </div>
   </div>
 </div>
@@ -363,8 +386,17 @@
         <button class="btn secondary" style="margin-top:8px;" onclick="toggleChangePass(false)">Cancel</button>
       </div>
 
+      <div id="regenCodeBox" style="display:none; margin-top:6px;">
+        <div class="field"><label>Confirm your current password</label><input type="password" id="rgOldPass" autocomplete="current-password"></div>
+        <div class="auth-error" id="rgError"></div>
+        <div id="rgCodeReveal" style="display:none; background:#f6f3ee; border:1.5px dashed var(--navy); border-radius:12px; padding:14px; text-align:center; margin-bottom:12px; font-family:monospace; font-size:17px; font-weight:700; letter-spacing:1px; color:var(--navy);"></div>
+        <button class="btn" onclick="regenerateRecoveryCode()">Generate new recovery code</button>
+        <button class="btn secondary" style="margin-top:8px;" onclick="toggleRegenBox(false)">Close</button>
+      </div>
+
       <div id="acctButtons">
         <button class="btn secondary" onclick="toggleChangePass(true)">Change password</button>
+        <button class="btn secondary" style="margin-top:8px;" onclick="toggleRegenBox(true)">Get a new recovery code</button>
         <button class="btn secondary" style="margin-top:8px;" onclick="logoutAccount()">Log out</button>
         <button class="btn danger" style="margin-top:8px;" onclick="showResetConfirm()">Reset account &amp; wipe data</button>
       </div>
@@ -575,6 +607,13 @@ function getAccount(){
 function hasActiveSession(){
   return !!(localStorage.getItem(SESSION_KEY) || sessionStorage.getItem(SESSION_TEMP_KEY));
 }
+function randomRecoveryCode(){
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789"; // no 0/O/1/I/L ambiguity
+  const arr = new Uint8Array(12);
+  crypto.getRandomValues(arr);
+  let raw = Array.from(arr).map(b => alphabet[b % alphabet.length]).join("");
+  return raw.match(/.{1,4}/g).join("-"); // XXXX-XXXX-XXXX
+}
 async function createAccount(){
   const user = document.getElementById("authNewUser").value.trim();
   const pass = document.getElementById("authNewPass").value;
@@ -586,9 +625,24 @@ async function createAccount(){
   if(pass !== pass2){ err.textContent = "Passwords don't match."; return; }
   const salt = randomSalt();
   const hash = await sha256Hex(salt + pass);
-  localStorage.setItem(ACCOUNT_KEY, JSON.stringify({username:user, salt, hash}));
+  const recoveryCode = randomRecoveryCode();
+  const recoverySalt = randomSalt();
+  const recoveryHash = await sha256Hex(recoverySalt + recoveryCode);
+  localStorage.setItem(ACCOUNT_KEY, JSON.stringify({username:user, salt, hash, recoverySalt, recoveryHash}));
   localStorage.setItem(SESSION_KEY, "1");
-  enterApp(user);
+  document.getElementById("authCreateForm").style.display = "none";
+  document.getElementById("recoveryCodeDisplay").textContent = recoveryCode;
+  document.getElementById("authCodeSavedCheck").checked = false;
+  document.getElementById("authCodeError").textContent = "";
+  document.getElementById("authShowCodeForm").style.display = "block";
+}
+function confirmCodeSaved(){
+  if(!document.getElementById("authCodeSavedCheck").checked){
+    document.getElementById("authCodeError").textContent = "Please confirm you've saved the code before continuing.";
+    return;
+  }
+  const acct = getAccount();
+  enterApp(acct.username);
 }
 async function loginAccount(){
   const acct = getAccount();
@@ -602,6 +656,31 @@ async function loginAccount(){
   if(remember){ localStorage.setItem(SESSION_KEY, "1"); }
   else { sessionStorage.setItem(SESSION_TEMP_KEY, "1"); }
   enterApp(acct.username);
+}
+function toggleRegenBox(show){
+  document.getElementById("regenCodeBox").style.display = show ? "block" : "none";
+  document.getElementById("acctButtons").style.display = show ? "none" : "block";
+  document.getElementById("rgOldPass").value = "";
+  document.getElementById("rgError").textContent = "";
+  document.getElementById("rgCodeReveal").style.display = "none";
+}
+async function regenerateRecoveryCode(){
+  const acct = getAccount();
+  const oldPass = document.getElementById("rgOldPass").value;
+  const err = document.getElementById("rgError");
+  err.textContent = "";
+  const oldHash = await sha256Hex(acct.salt + oldPass);
+  if(oldHash !== acct.hash){ err.textContent = "Password is incorrect."; return; }
+  const newCode = randomRecoveryCode();
+  const newSalt = randomSalt();
+  acct.recoverySalt = newSalt;
+  acct.recoveryHash = await sha256Hex(newSalt + newCode);
+  localStorage.setItem(ACCOUNT_KEY, JSON.stringify(acct));
+  logHistory("Regenerated recovery code", "");
+  const box = document.getElementById("rgCodeReveal");
+  box.textContent = newCode;
+  box.style.display = "block";
+  document.getElementById("rgOldPass").value = "";
 }
 function toggleChangePass(show){
   document.getElementById("changePassBox").style.display = show ? "block" : "none";
@@ -632,6 +711,41 @@ function logoutAccount(){
   localStorage.removeItem(SESSION_KEY);
   sessionStorage.removeItem(SESSION_TEMP_KEY);
   location.reload();
+}
+function showResetPassForm(){
+  document.getElementById("authLoginForm").style.display = "none";
+  document.getElementById("authResetForm").style.display = "block";
+  document.getElementById("resetCode").value = "";
+  document.getElementById("resetNewPass").value = "";
+  document.getElementById("resetNewPass2").value = "";
+  document.getElementById("authResetError").textContent = "";
+}
+function showLoginForm(){
+  document.getElementById("authResetForm").style.display = "none";
+  document.getElementById("authLoginForm").style.display = "block";
+}
+async function resetPasswordWithCode(){
+  const acct = getAccount();
+  const code = document.getElementById("resetCode").value.trim().toUpperCase();
+  const newPass = document.getElementById("resetNewPass").value;
+  const newPass2 = document.getElementById("resetNewPass2").value;
+  const err = document.getElementById("authResetError");
+  err.textContent = "";
+  if(!code){ err.textContent = "Please enter your recovery code."; return; }
+  if(!acct.recoveryHash){ err.textContent = "No recovery code was set up for this account. Use the wipe option below."; return; }
+  const codeHash = await sha256Hex(acct.recoverySalt + code);
+  if(codeHash !== acct.recoveryHash){ err.textContent = "That recovery code doesn't match."; return; }
+  if(newPass.length < 4){ err.textContent = "New password must be at least 4 characters."; return; }
+  if(newPass !== newPass2){ err.textContent = "New passwords don't match."; return; }
+  const newSalt = randomSalt();
+  const newHash = await sha256Hex(newSalt + newPass);
+  acct.salt = newSalt;
+  acct.hash = newHash;
+  localStorage.setItem(ACCOUNT_KEY, JSON.stringify(acct));
+  localStorage.setItem(SESSION_KEY, "1");
+  document.getElementById("authResetForm").style.display = "none";
+  alert("Password reset. All your data is exactly as you left it.");
+  enterApp(acct.username);
 }
 function showResetConfirm(){
   if(!confirm("This will permanently delete the account AND all data on this device (visits, payslips, history, settings). This cannot be undone. Continue?")) return;
